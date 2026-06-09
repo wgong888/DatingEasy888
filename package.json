@@ -1,0 +1,22 @@
+{
+  "name": "datingeasy888-prototype",
+  "version": "0.4.0",
+  "private": true,
+  "description": "DatingEasy888 Arfa runnable product prototype",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node Service/server.js",
+    "dev": "node --watch Service/server.js",
+    "test": "node --test Test/*.test.js",
+    "test:browser": "node Test/run-browser-smoke.js",
+    "verify": "npm test && npm run test:browser",
+    "reset": "node Service/reset-database.js",
+    "demo": "npm run reset && npm start"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.60.0"
+  }
+}

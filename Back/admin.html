@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DatingEasy888 Admin</title>
+  <link rel="stylesheet" href="/back/staff.css">
+  <script src="/back/admin.js" defer></script>
+</head>
+<body>
+  <main id="login-view" class="staff-login">
+    <section class="login-panel">
+      <div class="brand"><span class="brand-mark">D</span>DatingEasy888 Operations</div>
+      <h1>Administrator sign in</h1>
+      <p>Manage daily operations, customer recovery, employees, policies, and system health.</p>
+      <form id="staff-login-form">
+        <label>Work email<input name="email" type="email" value="admin@datingeasy.test" required></label>
+        <label>Password<input name="password" type="password" value="Demo123!" required></label>
+        <button class="primary" type="submit">Sign in to administration</button>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="workspace-view" class="staff-shell hidden">
+    <header class="staff-header">
+      <div class="brand"><span class="brand-mark">D</span>Administration</div>
+      <div class="header-meta">
+        <span id="header-health" class="status">Systems healthy</span>
+        <span id="admin-name"></span>
+        <button id="logout" class="secondary" type="button">Log out</button>
+      </div>
+    </header>
+    <aside class="staff-sidebar">
+      <h2>Administration</h2>
+      <nav class="staff-nav">
+        <button class="active" type="button" data-admin-view="overview">Overview</button>
+        <button type="button" data-admin-view="resets">Password resets <span id="reset-nav-count"></span></button>
+        <button type="button" data-admin-view="payments">Outgoing payments <span id="payment-nav-count"></span></button>
+        <button type="button" data-admin-view="employees">Employees</button>
+        <button type="button" data-admin-view="robots">Robot operations</button>
+        <button type="button" data-admin-view="policies">Policies</button>
+        <button type="button" data-admin-view="health">System health</button>
+        <button type="button" data-admin-view="audit">Audit</button>
+      </nav>
+    </aside>
+    <main class="staff-main admin-main">
+      <div id="admin-status" class="admin-status" role="status"></div>
+
+      <section id="admin-view-overview" class="admin-view">
+        <div class="page-title">
+          <div><h1>Operational overview</h1><p id="overview-date">Current UTC business day</p></div>
+          <div class="capacity"><span id="policy-version">Policy version</span><span>CEO approval required for outgoing payments</span></div>
+        </div>
+        <section id="metrics" class="metrics-grid"></section>
+        <div class="admin-grid">
+          <section class="data-panel">
+            <div class="panel-heading"><h2>Operation status</h2><span>Live summary</span></div>
+            <div id="operation-list" class="operation-grid"></div>
+            <div class="panel-heading"><h2>Recent audit activity</h2><span>Latest 20</span></div>
+            <div id="overview-audit-list" class="audit-list"></div>
+          </section>
+          <section class="data-panel">
+            <div class="panel-heading"><h2>System health</h2><span>Current</span></div>
+            <div id="system-list" class="system-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="admin-view-resets" class="admin-view hidden">
+        <div class="page-title">
+          <div><h1>Customer password resets</h1><p>Approve verified requests and deliver a one-time temporary password.</p></div>
+          <button id="auto-approve-toggle" class="secondary" type="button">Auto approval</button>
+        </div>
+        <section class="data-panel">
+          <div class="panel-heading"><h2>Waiting list</h2><span>Newest first</span></div>
+          <div id="reset-list" class="admin-table-list"></div>
+        </section>
+      </section>
+
+      <section id="admin-view-employees" class="admin-view hidden">
+        <div class="page-title">
+          <div><h1>Employee accounts</h1><p>Chat employee, administrator, and CEO access.</p></div>
+          <button id="add-employee" class="primary" type="button">Add employee</button>
+        </div>
+        <section class="data-panel">
+          <div class="panel-heading"><h2>Employees</h2><span>Active and removed</span></div>
+          <div id="employee-list" class="admin-table-list"></div>
+        </section>
+      </section>
+
+      <section id="admin-view-payments" class="admin-view hidden">
+        <div class="page-title">
+          <div><h1>Outgoing payments</h1><p>Prepare company payments for separate CEO approval.</p></div>
+          <button id="add-payment" class="primary" type="button">Prepare payment</button>
+        </div>
+        <section class="data-panel">
+          <div class="panel-heading"><h2>Payment requests</h2><span>Pending first</span></div>
+          <div id="payment-list" class="admin-table-list"></div>
+        </section>
+      </section>
+
+      <section id="admin-view-policies" class="admin-view hidden">
+        <div class="page-title">
+          <div><h1>Policy maintenance</h1><p>Add, edit, enable, and disable operational policies.</p></div>
+          <button id="add-policy" class="primary" type="button">Add policy</button>
+        </div>
+        <div id="policy-list" class="policy-maintenance-list"></div>
+      </section>
+
+      <section id="admin-view-robots" class="admin-view hidden">
+        <div class="page-title">
+          <div><h1>Robot operations</h1><p>Background coverage, shifts, and the global English response policy.</p></div>
+          <button id="refresh-robots" class="secondary" type="button">Refresh status</button>
+        </div>
+        <section id="robot-summary" class="robot-summary-grid"></section>
+        <div class="robot-operations-grid">
+          <section class="data-panel">
+            <div class="panel-heading"><h2>Robot inventory</h2><span>Profile type is hidden from customers</span></div>
+            <div id="robot-list" class="admin-table-list"></div>
+          </section>
+          <section class="data-panel">
+            <div class="panel-heading"><h2>Outside AI policy</h2><span>Global setting</span></div>
+            <form id="robot-ai-form" class="robot-ai-form">
+              <label>Response mode
+                <select name="mode">
+                  <option value="LocalOnly">Local English engine only</option>
+                  <option value="HybridExternalAllowed">Allow outside AI when useful</option>
+                </select>
+              </label>
+              <div class="payment-field-pair">
+                <label>Daily budget, USD<input name="dailyBudget" type="number" min="0" step="0.01" required></label>
+                <label>Monthly budget, USD<input name="monthlyBudget" type="number" min="0" step="0.01" required></label>
+              </div>
+              <div id="robot-ai-usage" class="robot-ai-usage"></div>
+              <button class="primary" type="submit">Save AI policy</button>
+            </form>
+          </section>
+        </div>
+        <section class="data-panel robot-shift-panel">
+          <div class="panel-heading">
+            <h2>Current and upcoming shifts</h2>
+            <span class="shift-regenerate">
+              <input id="robot-shift-date" type="date" aria-label="Shift business date">
+              <button id="regenerate-robot-shifts" class="secondary compact-button" type="button">Regenerate day</button>
+            </span>
+          </div>
+          <div id="robot-shift-list" class="admin-table-list"></div>
+        </section>
+      </section>
+
+      <section id="admin-view-health" class="admin-view hidden">
+        <div class="page-title">
+          <div><h1>System health</h1><p id="health-checked">Service checks</p></div>
+          <button id="refresh-health" class="secondary" type="button">Refresh checks</button>
+        </div>
+        <section class="data-panel"><div id="health-list" class="health-list"></div></section>
+      </section>
+
+      <section id="admin-view-audit" class="admin-view hidden">
+        <div class="page-title"><div><h1>Audit activity</h1><p>Recent administrative and customer security events.</p></div></div>
+        <section class="data-panel"><div id="audit-list" class="audit-list"></div></section>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="employee-dialog" class="admin-dialog">
+    <form id="employee-form">
+      <div class="dialog-heading"><h2 id="employee-dialog-title">Add employee</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <input name="employeeId" type="hidden">
+      <label>Full name<input name="displayName" required></label>
+      <label>Work email<input name="email" type="email" required></label>
+      <label>Role
+        <select name="role" required>
+          <option value="ChatEmployee">Chat employee</option>
+          <option value="Administrator">Administrator</option>
+          <option value="CEO">CEO</option>
+        </select>
+      </label>
+      <label>Remark<textarea name="remark" rows="3"></textarea></label>
+      <label id="employee-active-label" class="check-label hidden"><input name="active" type="checkbox"> Account active</label>
+      <div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>Cancel</button><button class="primary" type="submit">Save employee</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="policy-dialog" class="admin-dialog">
+    <form id="policy-form">
+      <div class="dialog-heading"><h2>Add policy</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <label>Policy key<input name="policyKey" pattern="[a-z][a-z0-9_]{2,60}" required></label>
+      <label>Title<input name="title" required></label>
+      <label>Description<textarea name="description" rows="3"></textarea></label>
+      <label>Value<input name="value" required></label>
+      <label class="check-label"><input name="active" type="checkbox" checked> Enabled</label>
+      <div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>Cancel</button><button class="primary" type="submit">Add policy</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="payment-dialog" class="admin-dialog">
+    <form id="payment-form">
+      <div class="dialog-heading"><h2>Prepare outgoing payment</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <label>Payee name<input name="payeeName" required maxlength="150"></label>
+      <label>Category
+        <select name="category" required>
+          <option>Cloud service</option>
+          <option>Advertisement</option>
+          <option>Employee payment</option>
+          <option>Contractor</option>
+          <option>Customer refund</option>
+          <option>Tax and fee</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <div class="payment-field-pair">
+        <label>Amount<input name="amount" type="number" min="0.01" step="0.01" required></label>
+        <label>Currency<input name="currencyCode" value="USD" pattern="[A-Za-z]{3}" maxlength="3" required></label>
+      </div>
+      <label>Business description<textarea name="description" rows="4" minlength="5" maxlength="500" required></textarea></label>
+      <p class="form-guidance">Submitting creates an immutable pending request. Only the CEO can approve or deny it.</p>
+      <div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>Cancel</button><button class="primary" type="submit">Send to CEO</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

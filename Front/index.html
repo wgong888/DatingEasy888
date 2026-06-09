@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fffaf7">
+  <title>DatingEasy888 Arfa</title>
+  <link rel="stylesheet" href="/front/styles.css">
+  <script src="/front/app.js" defer></script>
+</head>
+<body>
+  <div id="auth-view" class="auth-shell">
+    <main class="auth-panel" aria-labelledby="auth-title">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">D</span>
+        <strong>DatingEasy888</strong>
+      </div>
+      <p class="eyebrow">Adults 18+ only</p>
+      <h1 id="auth-title">Good conversations start simply.</h1>
+      <p class="auth-copy">Meet adults, discover shared interests, and chat with clear costs and simple profiles.</p>
+
+      <div class="auth-tabs" role="tablist" aria-label="Account access">
+        <button class="auth-tab active" type="button" data-auth-tab="login">Sign in</button>
+        <button class="auth-tab" type="button" data-auth-tab="register">Create account</button>
+        <button class="auth-tab" type="button" data-auth-tab="recovery">Forgot password</button>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <label>Email
+          <input name="email" type="email" autocomplete="email" value="demo@datingeasy.test" required>
+        </label>
+        <label>Password
+          <input name="password" type="password" autocomplete="current-password" value="Demo123!" required>
+        </label>
+        <button class="primary-button" type="submit">Sign in</button>
+        <button id="demo-login" class="text-button" type="button">Use prototype account</button>
+      </form>
+
+      <form id="register-form" class="auth-form hidden">
+        <div class="field-pair">
+          <label>Display name
+            <input name="displayName" autocomplete="nickname" required>
+          </label>
+          <label>Birth date
+            <input name="birthDate" type="date" required>
+          </label>
+        </div>
+        <label>Email
+          <input name="email" type="email" autocomplete="email" required>
+        </label>
+        <label>Phone
+          <input name="phone" type="tel" autocomplete="tel">
+        </label>
+        <label>Password
+          <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <div class="field-pair">
+          <label>I am
+            <select name="sex">
+              <option>Woman</option>
+              <option>Man</option>
+              <option>Nonbinary</option>
+              <option>NotSpecified</option>
+            </select>
+          </label>
+          <label>Country
+            <select name="countryCode" required>
+              <option value="US">United States</option>
+              <option value="CA">Canada</option>
+              <option value="GB">United Kingdom</option>
+              <option value="AU">Australia</option>
+              <option value="NZ">New Zealand</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-pair">
+          <label>State or province
+            <input name="state" required maxlength="120">
+          </label>
+          <label>City
+            <input name="city" required maxlength="120">
+          </label>
+        </div>
+        <button class="primary-button" type="submit">Create account</button>
+        <p class="form-note">Eligible new accounts receive 50 prototype credits.</p>
+      </form>
+      <form id="recovery-form" class="auth-form hidden">
+        <label>Account full name
+          <input name="fullName" autocomplete="name" required>
+        </label>
+        <label>Email or phone number
+          <input name="contact" autocomplete="email" required>
+        </label>
+        <button class="primary-button" type="submit">Request password reset</button>
+        <p class="form-note">Matching requests enter the administrator approval queue. Approved temporary passwords must be changed after sign-in.</p>
+      </form>
+      <p id="auth-error" class="form-error" role="alert"></p>
+    </main>
+    <aside class="auth-photo" aria-label="DatingEasy888 member portraits">
+      <img src="/assets/profiles/contact-sheet.png" alt="Six fictional adult profile portraits">
+      <div class="auth-photo-label">
+        <strong>Original synthetic portraits</strong>
+        <span>Meet people through profiles built for easy conversation.</span>
+      </div>
+    </aside>
+  </div>
+
+  <div id="app-view" class="app-shell hidden">
+    <header class="app-header">
+      <button id="menu-button" class="icon-button mobile-only" type="button" aria-label="Open menu" title="Menu">☰</button>
+      <a class="brand-lockup compact" href="#discover" aria-label="DatingEasy888 home">
+        <span class="brand-mark" aria-hidden="true">D</span>
+        <strong>DatingEasy888</strong>
+      </a>
+      <div class="header-actions">
+        <button id="credits-button" class="credits-button" type="button" title="Credits">
+          <span aria-hidden="true">●</span>
+          <strong id="credit-balance">0</strong>
+          <span>credits</span>
+        </button>
+        <button id="logout-button" class="icon-button" type="button" aria-label="Log out" title="Log out">↪</button>
+      </div>
+    </header>
+
+    <aside id="side-nav" class="side-nav">
+      <nav aria-label="Main navigation">
+        <button class="nav-button active" type="button" data-view="messages"><span aria-hidden="true">✉</span>Messages</button>
+        <button class="nav-button" type="button" data-view="discover"><span aria-hidden="true">⌕</span>Discover</button>
+        <button class="nav-button" type="button" data-view="favorites"><span aria-hidden="true">♥</span>Favorites</button>
+        <button class="nav-button" type="button" data-view="me"><span aria-hidden="true">○</span>Me</button>
+      </nav>
+      <div class="side-note">
+        <strong>Arfa 0.4</strong>
+        <span>No real payments are processed.</span>
+      </div>
+    </aside>
+
+    <main class="app-main">
+      <section id="view-discover" class="app-view hidden">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Discover</p>
+            <h1>People worth a conversation</h1>
+          </div>
+          <label class="search-control">
+            <span aria-hidden="true">⌕</span>
+            <input id="search-input" type="search" placeholder="Name, city, or interest" aria-label="Search profiles">
+          </label>
+        </div>
+        <div id="profile-grid" class="profile-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="view-favorites" class="app-view hidden">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Favorites</p>
+            <h1>Profiles you saved</h1>
+          </div>
+        </div>
+        <div id="favorite-grid" class="profile-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="view-profile" class="app-view hidden">
+        <div id="profile-page"></div>
+      </section>
+
+      <section id="view-messages" class="app-view">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Messages</p>
+            <h1>Your conversations</h1>
+          </div>
+        </div>
+        <div class="messages-layout">
+          <div id="conversation-list" class="conversation-list"></div>
+          <section id="conversation-panel" class="conversation-panel empty-state">
+            <div>
+              <span class="empty-icon" aria-hidden="true">✉</span>
+              <h2>Choose a conversation</h2>
+              <p>Your messages will appear here.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="view-me" class="app-view hidden">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h1 id="me-title">Your profile</h1>
+          </div>
+          <button class="secondary-button" type="button" data-open-credits>Add credits</button>
+        </div>
+        <div class="account-layout profile-editor-layout">
+          <section class="account-summary">
+            <img id="me-photo" class="profile-avatar" alt="">
+            <h2 id="me-name">Alex</h2>
+            <p id="me-location">Los Angeles</p>
+            <div class="balance-callout">
+              <span>Available balance</span>
+              <strong><span id="me-balance">0</span> credits</strong>
+            </div>
+          </section>
+          <div class="account-content">
+            <section id="password-required" class="password-required hidden">
+              <strong>Change your temporary password</strong>
+              <span>Your account is protected, but you must choose a permanent password now.</span>
+            </section>
+            <section id="profile-required" class="profile-required hidden">
+              <div>
+                <strong>Complete your profile</strong>
+                <span>Finish every required section before using Discover and Messages.</span>
+              </div>
+              <b id="profile-completeness">0%</b>
+            </section>
+            <form id="profile-edit-form" class="profile-edit-form">
+              <div class="subheading"><h2>Review or edit profile</h2><span>Required fields are marked *</span></div>
+              <section class="profile-form-section">
+                <div class="subheading"><h3>Photos</h3><span>Converted to JPG or PNG, maximum 100 x 100</span></div>
+                <div class="photo-editor">
+                  <img id="profile-photo-preview" alt="Current profile portrait">
+                  <label>Main public photo *
+                    <input id="profile-photo-input" type="file" accept="image/*">
+                  </label>
+                  <label>Private photo
+                    <input id="private-photo-input" type="file" accept="image/*">
+                  </label>
+                </div>
+              </section>
+              <section class="profile-form-section">
+                <div class="subheading"><h3>Basic information</h3><span>Public profile</span></div>
+                <div class="field-pair">
+                  <label>Display name *<input name="displayName" required maxlength="100"></label>
+                  <label>Birthday *<input name="birthDate" type="date" required></label>
+                </div>
+                <div class="field-pair">
+                  <label>Gender *
+                    <select name="sex" required>
+                      <option value="Woman">Woman</option>
+                      <option value="Man">Man</option>
+                      <option value="Nonbinary">Nonbinary</option>
+                      <option value="NotSpecified">Prefer not to say</option>
+                    </select>
+                  </label>
+                  <label>Looking for *
+                    <select name="lookingFor" required>
+                      <option value="">Select</option>
+                      <option value="Women">Women</option>
+                      <option value="Men">Men</option>
+                      <option value="Everyone">Everyone</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="field-pair">
+                  <label>Country *
+                    <select name="countryCode" required>
+                      <option value="US">United States</option>
+                      <option value="CA">Canada</option>
+                      <option value="GB">United Kingdom</option>
+                      <option value="AU">Australia</option>
+                      <option value="NZ">New Zealand</option>
+                    </select>
+                  </label>
+                  <label>State or province *<input name="state" required maxlength="120"></label>
+                </div>
+                <div class="field-pair">
+                  <label>City *<input name="city" required maxlength="120"></label>
+                  <label>Marital status *
+                    <select name="maritalStatus" required>
+                      <option value="">Select</option>
+                      <option>Single</option>
+                      <option>Divorced</option>
+                      <option>Widowed</option>
+                      <option>Separated</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+              <section class="profile-form-section">
+                <div class="subheading"><h3>Work and language</h3><span>About you</span></div>
+                <div class="field-pair">
+                  <label>Field of work *
+                    <select name="workField" required>
+                      <option value="">Select</option>
+                      <option>Business</option><option>Creative services</option>
+                      <option>Education</option><option>Engineering</option>
+                      <option>Healthcare</option><option>Hospitality</option>
+                      <option>Technology</option><option>Other</option>
+                    </select>
+                  </label>
+                  <label>English level *
+                    <select name="englishLevel" required>
+                      <option value="">Select</option>
+                      <option>Beginner</option><option>Intermediate</option>
+                      <option>Advanced</option><option>Native</option>
+                    </select>
+                  </label>
+                </div>
+                <label>Languages *<input name="languages" placeholder="English, Mandarin" required></label>
+              </section>
+              <section class="profile-form-section">
+                <div class="subheading"><h3>About</h3><span>Choose what fits you</span></div>
+                <fieldset class="choice-group" data-choice="traits" data-max="3">
+                  <legend>Traits * <small>Select up to 3</small></legend>
+                  <div class="choice-grid">
+                    <label><input type="checkbox" value="Honest"><span>Honest</span></label>
+                    <label><input type="checkbox" value="Cheerful"><span>Cheerful</span></label>
+                    <label><input type="checkbox" value="Self-confident"><span>Self-confident</span></label>
+                    <label><input type="checkbox" value="Optimistic"><span>Optimistic</span></label>
+                    <label><input type="checkbox" value="Calm"><span>Calm</span></label>
+                    <label><input type="checkbox" value="Grateful"><span>Grateful</span></label>
+                    <label><input type="checkbox" value="Thoughtful"><span>Thoughtful</span></label>
+                    <label><input type="checkbox" value="Kind"><span>Kind</span></label>
+                    <label><input type="checkbox" value="Humorous"><span>Humorous</span></label>
+                    <label><input type="checkbox" value="Curious"><span>Curious</span></label>
+                  </div>
+                </fieldset>
+                <fieldset class="choice-group" data-choice="interests" data-max="5">
+                  <legend>Interests * <small>Select up to 5</small></legend>
+                  <div class="choice-grid">
+                    <label><input type="checkbox" value="Traveling"><span>Traveling</span></label>
+                    <label><input type="checkbox" value="Cooking"><span>Cooking</span></label>
+                    <label><input type="checkbox" value="Music"><span>Music</span></label>
+                    <label><input type="checkbox" value="Pets"><span>Pets</span></label>
+                    <label><input type="checkbox" value="Working out"><span>Working out</span></label>
+                    <label><input type="checkbox" value="Dancing"><span>Dancing</span></label>
+                    <label><input type="checkbox" value="Arts"><span>Arts</span></label>
+                    <label><input type="checkbox" value="Gardening"><span>Gardening</span></label>
+                    <label><input type="checkbox" value="Reading"><span>Reading</span></label>
+                    <label><input type="checkbox" value="Nature"><span>Nature</span></label>
+                    <label><input type="checkbox" value="Photography"><span>Photography</span></label>
+                    <label><input type="checkbox" value="Volunteering"><span>Volunteering</span></label>
+                  </div>
+                </fieldset>
+                <fieldset class="choice-group" data-choice="movies" data-max="3">
+                  <legend>Movies * <small>Select up to 3</small></legend>
+                  <div class="choice-grid">
+                    <label><input type="checkbox" value="Documentary"><span>Documentary</span></label>
+                    <label><input type="checkbox" value="Animation"><span>Animation</span></label>
+                    <label><input type="checkbox" value="Comedy"><span>Comedy</span></label>
+                    <label><input type="checkbox" value="Adventure"><span>Adventure</span></label>
+                    <label><input type="checkbox" value="Action"><span>Action</span></label>
+                    <label><input type="checkbox" value="Drama"><span>Drama</span></label>
+                    <label><input type="checkbox" value="Science fiction"><span>Science fiction</span></label>
+                    <label><input type="checkbox" value="Romcom"><span>Romcom</span></label>
+                  </div>
+                </fieldset>
+                <fieldset class="choice-group" data-choice="music" data-max="3">
+                  <legend>Music * <small>Select up to 3</small></legend>
+                  <div class="choice-grid">
+                    <label><input type="checkbox" value="Rock"><span>Rock</span></label>
+                    <label><input type="checkbox" value="Pop"><span>Pop</span></label>
+                    <label><input type="checkbox" value="Electronic"><span>Electronic</span></label>
+                    <label><input type="checkbox" value="Classical music"><span>Classical</span></label>
+                    <label><input type="checkbox" value="Jazz"><span>Jazz</span></label>
+                    <label><input type="checkbox" value="Hip-hop"><span>Hip-hop</span></label>
+                    <label><input type="checkbox" value="Country"><span>Country</span></label>
+                    <label><input type="checkbox" value="Folk"><span>Folk</span></label>
+                  </div>
+                </fieldset>
+              </section>
+              <section class="profile-form-section">
+                <div class="subheading"><h3>Looking for</h3><span>Your preferences</span></div>
+                <fieldset class="choice-group" data-choice="goals" data-max="3">
+                  <legend>Goals * <small>Select up to 3</small></legend>
+                  <div class="choice-grid">
+                    <label><input type="checkbox" value="Chatting"><span>Chatting</span></label>
+                    <label><input type="checkbox" value="Finding a friend"><span>Finding a friend</span></label>
+                    <label><input type="checkbox" value="Having fun"><span>Having fun</span></label>
+                    <label><input type="checkbox" value="A relationship"><span>A relationship</span></label>
+                    <label><input type="checkbox" value="Other"><span>Other</span></label>
+                  </div>
+                </fieldset>
+                <div class="field-pair">
+                  <label>Preferred age from *<input name="preferredAgeMin" type="number" min="18" max="120" required></label>
+                  <label>Preferred age to *<input name="preferredAgeMax" type="number" min="18" max="120" required></label>
+                </div>
+                <label>Personality *
+                  <select name="personalityType" required>
+                    <option value="">Select</option>
+                    <option>Career chaser</option><option>Easygoing</option>
+                    <option>Family focused</option><option>Creative spirit</option>
+                    <option>Adventurous</option><option>Quiet thinker</option>
+                  </select>
+                </label>
+              </section>
+              <section class="profile-form-section">
+                <div class="subheading"><h3>Your words</h3><span>Tell people about yourself</span></div>
+                <label>Short bio<textarea name="bio" rows="4" maxlength="4000"></textarea></label>
+                <label>Story *<textarea name="story" rows="7" maxlength="4000" required></textarea></label>
+              </section>
+              <button id="save-profile-button" class="primary-button" type="submit">Save profile</button>
+            </form>
+            <form id="password-change-form" class="profile-edit-form">
+              <div class="subheading"><h2>Change password</h2><span>Account security</span></div>
+              <div class="field-pair">
+                <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+                <label>New password<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+              </div>
+              <button class="primary-button" type="submit">Change password</button>
+            </form>
+            <section class="ledger-section">
+              <div class="subheading">
+                <h2>Recent credit activity</h2>
+                <span>Latest 20</span>
+              </div>
+              <div id="ledger-list" class="ledger-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Mobile navigation">
+      <button class="nav-button active" type="button" data-view="messages"><span aria-hidden="true">✉</span>Messages</button>
+      <button class="nav-button" type="button" data-view="discover"><span aria-hidden="true">⌕</span>Discover</button>
+      <button class="nav-button" type="button" data-view="favorites"><span aria-hidden="true">♥</span>Favorites</button>
+      <button class="nav-button" type="button" data-view="me"><span aria-hidden="true">○</span>Me</button>
+    </nav>
+  </div>
+
+  <dialog id="credits-dialog" class="credits-dialog">
+    <form id="credit-purchase-form">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Arfa checkout</p>
+          <h2>Add credits</h2>
+        </div>
+        <button class="icon-button" type="button" data-close-dialog aria-label="Close credits" title="Close">×</button>
+      </div>
+      <p>No real card is charged in Arfa. Full card numbers and security codes are never stored.</p>
+      <div id="package-list" class="package-list"></div>
+      <section class="checkout-fields">
+        <label>Name on card
+          <input name="cardholderName" autocomplete="cc-name" value="Alex Demo" required>
+        </label>
+        <label>Card number
+          <input name="cardNumber" inputmode="numeric" autocomplete="cc-number"
+            value="4242 4242 4242 4242" required>
+        </label>
+        <div class="checkout-row">
+          <label>Month
+            <input name="expirationMonth" type="number" min="1" max="12" autocomplete="cc-exp-month" value="12" required>
+          </label>
+          <label>Year
+            <input name="expirationYear" type="number" min="2026" max="2046" autocomplete="cc-exp-year" value="2030" required>
+          </label>
+          <label>Security code
+            <input name="securityCode" inputmode="numeric" autocomplete="cc-csc" value="123" required>
+          </label>
+        </div>
+      </section>
+      <button id="purchase-credits-button" class="primary-button checkout-submit" type="submit">Add selected credits</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

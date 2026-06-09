@@ -1,0 +1,2864 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+const { openDatabase, now, ROOT } = require('./database');
+const {
+  hashPassword,
+  verifyPassword,
+  randomToken,
+  requestHash
+} = require('./security');
+const {
+  EXTERNAL_MODEL,
+  generateRobotReply,
+  planDailyShifts,
+  reconcileRobotOperations,
+  getPolicy
+} = require('./robot-engine');
+
+const CUSTOMER_IDLE_MS = 20 * 60 * 1000;
+const EMPLOYEE_IDLE_MS = 10 * 60 * 1000;
+const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
+const MESSAGE_COST = 5;
+const MAX_MESSAGE_WORDS = 60;
+const MAX_BODY_BYTES = 1_000_000;
+const CUSTOMER_TYPE = Object.freeze({
+  REAL: 0,
+  SEED: 1,
+  ROBOT: 2
+});
+const CREDIT_PACKAGES = [
+  { packageId: 1, amount: 10, credits: 100 },
+  { packageId: 2, amount: 20, credits: 220 },
+  { packageId: 3, amount: 30, credits: 360 },
+  { packageId: 4, amount: 50, credits: 700 },
+  { packageId: 5, amount: 100, credits: 1500 }
+];
+const GIFTS = [
+  { giftId: 1, name: 'Flower', icon: '🌹', senderCost: 100 },
+  { giftId: 2, name: 'Silver', icon: '🥈', senderCost: 200 },
+  { giftId: 3, name: 'Gold', icon: '🥇', senderCost: 500 },
+  { giftId: 4, name: 'Diamond', icon: '💎', senderCost: 1000 },
+  { giftId: 5, name: 'Big Rocket', icon: '🚀', senderCost: 10000 }
+].map((gift) => ({
+  ...gift,
+  recipientCredits: Math.floor(gift.senderCost * 0.8),
+  platformCredits: gift.senderCost - Math.floor(gift.senderCost * 0.8),
+  refundable: false
+}));
+const PREPARED_REPLIES = [
+  {
+    preparedReplyId: 'acknowledge-detail',
+    category: 'Feelings',
+    text: 'That sounds like a full day. What part stayed with you most?'
+  },
+  {
+    preparedReplyId: 'invite-detail',
+    category: 'Conversation',
+    text: 'I like the way you described that. Tell me one more detail.'
+  },
+  {
+    preparedReplyId: 'relaxing-evening',
+    category: 'Mood',
+    text: 'You made me smile. What would make tonight feel relaxing for you?'
+  },
+  {
+    preparedReplyId: 'listen-or-light',
+    category: 'Support',
+    text: 'I am listening. We can keep it light or talk about what is really on your mind.'
+  }
+];
+
+class ApiError extends Error {
+  constructor(status, code, message, fields = null) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.fields = fields;
+  }
+}
+
+function parseCookies(req) {
+  const result = {};
+  for (const pair of String(req.headers.cookie || '').split(';')) {
+    const index = pair.indexOf('=');
+    if (index < 0) continue;
+    result[pair.slice(0, index).trim()] = decodeURIComponent(pair.slice(index + 1));
+  }
+  return result;
+}
+
+function setSessionCookie(res, token) {
+  res.setHeader(
+    'Set-Cookie',
+    `de_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`
+  );
+}
+
+function clearSessionCookie(res) {
+  res.setHeader(
+    'Set-Cookie',
+    'de_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
+  );
+}
+
+function envelope(data, requestId) {
+  return { success: true, data, meta: { requestId }, error: null };
+}
+
+function errorEnvelope(error, requestId) {
+  return {
+    success: false,
+    data: null,
+    meta: { requestId },
+    error: {
+      code: error.code || 'INTERNAL_ERROR',
+      message: error.message || 'Something went wrong.',
+      ...(error.fields ? { fields: error.fields } : {})
+    }
+  };
+}
+
+function json(res, status, body) {
+  const content = JSON.stringify(body);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(content),
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.end(content);
+}
+
+async function readJson(req) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY_BYTES) {
+      throw new ApiError(413, 'CONTENT_TOO_LARGE', 'The request is too large.');
+    }
+    chunks.push(chunk);
+  }
+  if (chunks.length === 0) return {};
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new ApiError(400, 'INVALID_JSON', 'The request body is not valid JSON.');
+  }
+}
+
+function ageFromBirthDate(birthDate) {
+  const birth = new Date(`${birthDate}T00:00:00Z`);
+  if (Number.isNaN(birth.getTime())) return -1;
+  const today = new Date();
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  const month = today.getUTCMonth() - birth.getUTCMonth();
+  if (month < 0 || (month === 0 && today.getUTCDate() < birth.getUTCDate())) age -= 1;
+  return age;
+}
+
+function wordCount(text) {
+  return String(text).trim().split(/\s+/u).filter(Boolean).length;
+}
+
+function cardTypeFromNumber(value) {
+  if (/^4/u.test(value)) return 'VISA';
+  if (/^(5[1-5]|2[2-7])/u.test(value)) return 'MASTERCARD';
+  if (/^3[47]/u.test(value)) return 'AMEX';
+  return 'CARD';
+}
+
+function validCardNumber(value) {
+  const digits = String(value || '').replace(/\D/gu, '');
+  if (digits.length < 13 || digits.length > 19) return false;
+  let sum = 0;
+  let double = false;
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    let digit = Number(digits[index]);
+    if (double) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
+
+function parseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function cleanStringArray(value, maximum) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(
+    value.map((item) => String(item).trim()).filter(Boolean)
+  )].slice(0, maximum);
+}
+
+function validProfilePhoto(value) {
+  const photo = String(value || '');
+  return photo.startsWith('/assets/profiles/') ||
+    (/^data:image\/(?:png|jpeg);base64,/u.test(photo) && photo.length <= 200_000);
+}
+
+function defaultProfilePhoto(sex) {
+  const normalized = String(sex || '').toLowerCase();
+  if (normalized === 'man') return '/assets/profiles/default-man.svg';
+  if (normalized === 'woman') return '/assets/profiles/default-woman.svg';
+  return '/assets/profiles/default-neutral.svg';
+}
+
+function customerPhoto(row) {
+  const stored = row.ProfilePhoto || defaultProfilePhoto(row.Sex);
+  const separator = stored.lastIndexOf('#');
+  if (separator > 0) {
+    return {
+      src: stored.slice(0, separator),
+      position: stored.slice(separator + 1),
+      size: '300% 200%'
+    };
+  }
+  return { src: stored, position: '50% 50%', size: 'cover' };
+}
+
+function profileCompleteness(profile) {
+  const checks = [
+    profile.displayName,
+    ageFromBirthDate(profile.birthDate) >= 18,
+    profile.sex,
+    profile.countryCode,
+    profile.state,
+    profile.city,
+    profile.maritalStatus,
+    profile.workField,
+    profile.englishLevel,
+    profile.languages.length,
+    profile.traits.length,
+    profile.interests.length,
+    profile.movies.length,
+    profile.music.length,
+    profile.goals.length,
+    profile.preferredAgeMin >= 18,
+    profile.preferredAgeMax >= profile.preferredAgeMin,
+    profile.lookingFor,
+    profile.personalityType,
+    profile.story,
+    validProfilePhoto(profile.profilePhoto)
+  ];
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+}
+
+function editableCustomerProfile(row) {
+  return {
+    customerId: row.CustomerId,
+    email: row.Email,
+    phone: row.Phone || '',
+    displayName: row.DisplayName,
+    birthDate: row.BirthDate,
+    sex: row.Sex,
+    lookingFor: row.GenderLookingFor || '',
+    countryCode: row.CountryCode,
+    state: row.StateId || '',
+    city: row.CityName,
+    maritalStatus: row.MaritalStatus || '',
+    workField: row.WorkField || '',
+    englishLevel: row.EnglishLevel || '',
+    languages: parseJsonArray(row.LanguagesJson),
+    traits: parseJsonArray(row.TraitsJson),
+    interests: parseJsonArray(row.InterestsJson),
+    movies: parseJsonArray(row.MoviePreferencesJson),
+    music: parseJsonArray(row.MusicPreferencesJson),
+    goals: parseJsonArray(row.GoalsJson),
+    preferredAgeMin: row.PreferredAgeMin,
+    preferredAgeMax: row.PreferredAgeMax,
+    personalityType: row.PersonalityType || '',
+    story: row.Story || '',
+    bio: row.Bio || '',
+    profilePhoto: row.ProfilePhoto || defaultProfilePhoto(row.Sex),
+    publicPhotos: parseJsonArray(row.PublicPhotosJson),
+    privatePhotos: parseJsonArray(row.PrivatePhotosJson),
+    profileCompleted: Boolean(row.ProfileCompleted),
+    profileCompleteness: row.ProfileCompleteness || 0
+  };
+}
+
+function normalizeCustomer(row, favorite = false, options = {}) {
+  const customerType = Number(row.Seed);
+  const customer = {
+    customerId: row.CustomerId,
+    displayName: row.DisplayName,
+    age: ageFromBirthDate(row.BirthDate),
+    sex: row.Sex,
+    lookingFor: row.GenderLookingFor,
+    city: row.CityName,
+    state: row.StateId,
+    countryCode: row.CountryCode,
+    bio: row.Bio,
+    maritalStatus: row.MaritalStatus,
+    workField: row.WorkField,
+    englishLevel: row.EnglishLevel,
+    languages: parseJsonArray(row.LanguagesJson),
+    traits: parseJsonArray(row.TraitsJson),
+    interests: parseJsonArray(row.InterestsJson),
+    movies: parseJsonArray(row.MoviePreferencesJson),
+    music: parseJsonArray(row.MusicPreferencesJson),
+    goals: parseJsonArray(row.GoalsJson),
+    preferredAgeMin: row.PreferredAgeMin,
+    preferredAgeMax: row.PreferredAgeMax,
+    personalityType: row.PersonalityType,
+    story: row.Story,
+    online: customerType !== CUSTOMER_TYPE.REAL,
+    favorite: Boolean(favorite),
+    photo: customerPhoto(row)
+  };
+  if (options.includeType) {
+    Object.assign(customer, {
+      customerTypeCode: customerType,
+      customerType:
+        customerType === CUSTOMER_TYPE.REAL
+          ? 'Real'
+          : customerType === CUSTOMER_TYPE.SEED
+            ? 'Seed'
+            : 'Robot',
+      isSeed: customerType === CUSTOMER_TYPE.SEED,
+      isRobot: customerType === CUSTOMER_TYPE.ROBOT
+    });
+  }
+  return customer;
+}
+
+function matchPath(pathname, template) {
+  const names = [];
+  const pattern = template
+    .split('/')
+    .map((part) => {
+      if (part.startsWith(':')) {
+        names.push(part.slice(1));
+        return '([^/]+)';
+      }
+      return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    })
+    .join('/');
+  const match = pathname.match(new RegExp(`^${pattern}/?$`));
+  if (!match) return null;
+  return Object.fromEntries(names.map((name, index) => [name, decodeURIComponent(match[index + 1])]));
+}
+
+function createSession(db, principalType, principalId, role) {
+  const sessionId = randomToken();
+  const created = Date.now();
+  db.prepare(`
+    INSERT INTO Sessions (
+      SessionId, PrincipalType, PrincipalId, Role,
+      CreateTime, LastActivityTime, ExpireTime
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sessionId,
+    principalType,
+    principalId,
+    role,
+    new Date(created).toISOString(),
+    new Date(created).toISOString(),
+    new Date(created + SESSION_LIFETIME_MS).toISOString()
+  );
+  return sessionId;
+}
+
+function authenticate(db, req, expectedType = null, options = {}) {
+  const sessionId = parseCookies(req).de_session;
+  if (!sessionId) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Please sign in.');
+  const session = db.prepare('SELECT * FROM Sessions WHERE SessionId = ?').get(sessionId);
+  if (!session) throw new ApiError(401, 'SESSION_INVALID', 'Please sign in again.');
+
+  const current = Date.now();
+  const lastActivity = Date.parse(session.LastActivityTime);
+  const expireTime = Date.parse(session.ExpireTime);
+  const idleLimit =
+    session.PrincipalType === 'Customer' ? CUSTOMER_IDLE_MS : EMPLOYEE_IDLE_MS;
+  if (current >= expireTime || current - lastActivity >= idleLimit) {
+    db.prepare('DELETE FROM Sessions WHERE SessionId = ?').run(sessionId);
+    throw new ApiError(401, 'SESSION_EXPIRED', 'Your session expired. Please sign in again.');
+  }
+  if (expectedType && session.PrincipalType !== expectedType) {
+    throw new ApiError(403, 'FORBIDDEN', 'This account cannot use this area.');
+  }
+  if (session.PrincipalType === 'Customer' && !options.allowPasswordChangeRequired) {
+    const customer = db.prepare(`
+      SELECT MustChangePassword FROM CustomerProfile WHERE CustomerId = ?
+    `).get(session.PrincipalId);
+    if (customer?.MustChangePassword) {
+      throw new ApiError(
+        403,
+        'PASSWORD_CHANGE_REQUIRED',
+        'Change the temporary password before continuing.'
+      );
+    }
+  }
+  db.prepare('UPDATE Sessions SET LastActivityTime = ? WHERE SessionId = ?').run(
+    new Date(current).toISOString(),
+    sessionId
+  );
+  return session;
+}
+
+function audit(db, actorType, actorId, action, targetType, targetId, detail = {}) {
+  db.prepare(`
+    INSERT INTO AuditLog (
+      AuditLogId, ActorType, ActorId, Action, TargetType,
+      TargetId, DetailJson, CreateTime
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(),
+    actorType,
+    actorId,
+    action,
+    targetType || null,
+    targetId || null,
+    JSON.stringify(detail),
+    now()
+  );
+}
+
+function requireAdmin(db, req) {
+  const session = authenticate(db, req, 'Employee');
+  if (!['Administrator', 'CEO'].includes(session.Role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'Administrator access is required.');
+  }
+  return session;
+}
+
+function requireCEO(db, req) {
+  const session = authenticate(db, req, 'Employee');
+  if (session.Role !== 'CEO') {
+    throw new ApiError(403, 'CEO_APPROVAL_REQUIRED', 'CEO approval access is required.');
+  }
+  return session;
+}
+
+function maskContact(type, value) {
+  const text = String(value || '');
+  if (type === 'Email') {
+    const [name, domain] = text.split('@');
+    return `${name.slice(0, 2)}***@${domain}`;
+  }
+  return `***-***-${text.replace(/\D/gu, '').slice(-4)}`;
+}
+
+function temporaryPassword() {
+  return `De!${randomToken(9)}`;
+}
+
+function policyEnabled(db, key) {
+  const row = db.prepare(`
+    SELECT PolicyValue FROM PolicyDefinitions
+    WHERE PolicyKey = ? AND Active = 1
+  `).get(key);
+  return String(row?.PolicyValue || '').toLowerCase() === 'true';
+}
+
+function normalizeEmployee(row) {
+  return {
+    employeeId: row.EmployeeId,
+    email: row.Email,
+    displayName: row.DisplayName,
+    employeeType: row.EmployeeType,
+    role: row.Role,
+    active: Boolean(row.Active),
+    startDate: row.StartDate,
+    lastLoginTime: row.LastLoginTime,
+    remark: row.Remark || ''
+  };
+}
+
+function normalizeOutgoingPayment(row) {
+  return {
+    outgoingPaymentRequestId: row.OutgoingPaymentRequestId,
+    payeeName: row.PayeeName,
+    category: row.Category,
+    amount: row.Amount,
+    currencyCode: row.CurrencyCode,
+    description: row.Description,
+    status: row.Status,
+    requestTime: row.RequestTime,
+    requestedByEmployeeId: row.RequestedByEmployeeId,
+    requestedByName: row.RequestedByName,
+    decisionTime: row.DecisionTime,
+    decidedByName: row.DecidedByName,
+    decisionRemark: row.DecisionRemark
+  };
+}
+
+function getCustomer(db, customerId) {
+  const row = db.prepare('SELECT * FROM CustomerProfile WHERE CustomerId = ?').get(customerId);
+  if (!row || !row.Active) throw new ApiError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found.');
+  return row;
+}
+
+function getConversation(db, conversationId, customerId) {
+  const row = db.prepare(`
+    SELECT * FROM Conversations
+    WHERE ConversationId = ?
+      AND (CustomerAId = ? OR CustomerBId = ?)
+  `).get(conversationId, customerId, customerId);
+  if (!row) throw new ApiError(404, 'CONVERSATION_NOT_FOUND', 'Conversation not found.');
+  return row;
+}
+
+function getEmployeeConversation(db, conversationId, employeeId) {
+  const row = db.prepare(`
+    SELECT c.*,
+      CASE WHEN a.Seed = 1 THEN a.CustomerId ELSE b.CustomerId END AS SeedCustomerId,
+      CASE WHEN a.Seed = 0 THEN a.CustomerId ELSE b.CustomerId END AS RealCustomerId
+    FROM Conversations c
+    JOIN CustomerProfile a ON a.CustomerId = c.CustomerAId
+    JOIN CustomerProfile b ON b.CustomerId = c.CustomerBId
+    JOIN EmployeeSeed es
+      ON es.CustomerId = CASE WHEN a.Seed = 1 THEN a.CustomerId ELSE b.CustomerId END
+    WHERE c.ConversationId = ?
+      AND es.EmployeeId = ?
+      AND es.Active = 1
+      AND ((a.Seed = 1 AND b.Seed = 0) OR (a.Seed = 0 AND b.Seed = 1))
+  `).get(conversationId, employeeId);
+  if (!row) {
+    throw new ApiError(404, 'WORK_CONVERSATION_NOT_FOUND', 'Assigned conversation not found.');
+  }
+  return row;
+}
+
+function findOrCreateConversation(db, customerId, targetCustomerId) {
+  if (customerId === targetCustomerId) {
+    throw new ApiError(422, 'INVALID_RECIPIENT', 'You cannot message yourself.');
+  }
+  const customer = getCustomer(db, customerId);
+  const target = getCustomer(db, targetCustomerId);
+  if (
+    customer.Seed !== CUSTOMER_TYPE.REAL &&
+    target.Seed !== CUSTOMER_TYPE.REAL
+  ) {
+    throw new ApiError(
+      422,
+      'CUSTOMER_TYPE_CHAT_NOT_ALLOWED',
+      'Seed and robot customers may chat only with real customers.'
+    );
+  }
+  const [a, b] = [customerId, targetCustomerId].sort();
+  let conversation = db.prepare(`
+    SELECT * FROM Conversations WHERE CustomerAId = ? AND CustomerBId = ?
+  `).get(a, b);
+  if (!conversation) {
+    const timestamp = now();
+    const conversationId = randomUUID();
+    db.prepare(`
+      INSERT INTO Conversations (
+        ConversationId, CustomerAId, CustomerBId, CreateTime, UpdatedAt
+      ) VALUES (?, ?, ?, ?, ?)
+    `).run(conversationId, a, b, timestamp, timestamp);
+    conversation = db
+      .prepare('SELECT * FROM Conversations WHERE ConversationId = ?')
+      .get(conversationId);
+  }
+  return conversation;
+}
+
+function createApplication(options = {}) {
+  const db = options.db || openDatabase(options.databasePath);
+  reconcileRobotOperations(db);
+
+  async function handleApi(req, res, url, requestId) {
+    const { pathname, searchParams } = url;
+    let params;
+
+    if (req.method === 'GET' && pathname === '/api/v1/health') {
+      const databaseHealthy = db.prepare('SELECT 1 AS ok').get().ok === 1;
+      return json(res, 200, envelope({
+        status: databaseHealthy ? 'Healthy' : 'Unavailable',
+        apiVersion: 'v1',
+        prototypeVersion: '0.4.0',
+        releaseName: 'Arfa',
+        checkedAt: now()
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/auth/customer/login') {
+      const body = await readJson(req);
+      const email = String(body.email || '').trim().toLowerCase();
+      const customer = db
+        .prepare('SELECT * FROM CustomerProfile WHERE EmailNormalized = ? AND Seed = 0')
+        .get(email);
+      if (!customer || !customer.Active || !verifyPassword(body.password || '', customer.PasswordHash)) {
+        throw new ApiError(401, 'LOGIN_FAILED', 'Email or password is incorrect.');
+      }
+      const sessionId = createSession(db, 'Customer', customer.CustomerId, 'Customer');
+      db.prepare('UPDATE CustomerProfile SET LastLoginTime = ? WHERE CustomerId = ?').run(
+        now(),
+        customer.CustomerId
+      );
+      setSessionCookie(res, sessionId);
+      audit(db, 'Customer', customer.CustomerId, 'CustomerLogin', 'Session', sessionId);
+      return json(res, 200, envelope({
+        customerId: customer.CustomerId,
+        displayName: customer.DisplayName,
+        creditBalance: customer.CreditsRemain,
+        mustChangePassword: Boolean(customer.MustChangePassword),
+        mustCompleteProfile: !Boolean(customer.ProfileCompleted)
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/auth/customer/password-reset-requests') {
+      const body = await readJson(req);
+      const requestedName = String(body.fullName || '').trim();
+      const contact = String(body.contact || '').trim();
+      const contactType = contact.includes('@') ? 'Email' : 'Phone';
+      if (requestedName.length < 2 || contact.length < 5) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Enter the account name and email or phone number.');
+      }
+      const customer = contactType === 'Email'
+        ? db.prepare(`
+            SELECT * FROM CustomerProfile
+            WHERE Seed = 0 AND Active = 1
+              AND lower(DisplayName) = lower(?)
+              AND EmailNormalized = lower(?)
+          `).get(requestedName, contact)
+        : db.prepare(`
+            SELECT * FROM CustomerProfile
+            WHERE Seed = 0 AND Active = 1
+              AND lower(DisplayName) = lower(?)
+              AND Phone = ?
+          `).get(requestedName, contact);
+      if (!customer) {
+        audit(db, 'Public', 'anonymous', 'PasswordResetIdentityMismatch', 'Customer', null);
+        return json(res, 202, envelope({
+          accepted: true,
+          status: 'PendingVerification',
+          message: 'If the account information matches, the request will enter the approval queue.'
+        }, requestId));
+      }
+      const pending = db.prepare(`
+        SELECT * FROM PasswordResetRequests
+        WHERE CustomerId = ? AND Status = 'Pending'
+        ORDER BY RequestTime DESC LIMIT 1
+      `).get(customer.CustomerId);
+      if (pending) {
+        return json(res, 202, envelope({
+          accepted: true,
+          status: 'Pending',
+          passwordResetRequestId: pending.PasswordResetRequestId
+        }, requestId));
+      }
+      const resetId = randomUUID();
+      const timestamp = now();
+      const autoApprove = policyEnabled(db, 'password_reset_auto_approve');
+      let status = 'Pending';
+      let deliveryStatus = 'WaitingForAdministrator';
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          INSERT INTO PasswordResetRequests (
+            PasswordResetRequestId, CustomerId, RequestedName, ContactType,
+            ContactValueMasked, Status, RequestTime, DeliveryChannel
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          resetId,
+          customer.CustomerId,
+          requestedName,
+          contactType,
+          maskContact(contactType, contact),
+          autoApprove ? 'AutoApproved' : 'Pending',
+          timestamp,
+          contactType
+        );
+        if (autoApprove) {
+          const generated = temporaryPassword();
+          db.prepare(`
+            UPDATE CustomerProfile
+            SET PasswordHash = ?, MustChangePassword = 1
+            WHERE CustomerId = ?
+          `).run(hashPassword(generated), customer.CustomerId);
+          db.prepare(`
+            UPDATE PasswordResetRequests
+            SET DecisionTime = ?, Remark = ?
+            WHERE PasswordResetRequestId = ?
+          `).run(timestamp, 'Temporary password sent through simulated delivery provider.', resetId);
+          db.prepare('DELETE FROM Sessions WHERE PrincipalType = ? AND PrincipalId = ?')
+            .run('Customer', customer.CustomerId);
+          status = 'AutoApproved';
+          deliveryStatus = `SentBy${contactType}`;
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      audit(db, 'Customer', customer.CustomerId, 'PasswordResetRequested', 'PasswordResetRequest', resetId, {
+        contactType,
+        autoApprove
+      });
+      return json(res, 202, envelope({
+        accepted: true,
+        status,
+        deliveryStatus,
+        passwordResetRequestId: resetId
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/auth/customer/register') {
+      const body = await readJson(req);
+      const email = String(body.email || '').trim().toLowerCase();
+      const displayName = String(body.displayName || '').trim();
+      const password = String(body.password || '');
+      const birthDate = String(body.birthDate || '');
+      const sex = String(body.sex || '').trim();
+      const countryCode = String(body.countryCode || '').trim().toUpperCase();
+      const state = String(body.state || '').trim();
+      const city = String(body.city || '').trim();
+      const fields = {};
+      if (!email.includes('@')) fields.email = ['Enter a valid email address.'];
+      if (displayName.length < 2) fields.displayName = ['Enter a display name.'];
+      if (password.length < 8) fields.password = ['Use at least eight characters.'];
+      if (ageFromBirthDate(birthDate) < 18) fields.birthDate = ['You must be at least 18.'];
+      if (!['Man', 'Woman', 'Nonbinary', 'NotSpecified'].includes(sex)) {
+        fields.sex = ['Select your gender.'];
+      }
+      if (!/^[A-Z]{2}$/u.test(countryCode)) fields.countryCode = ['Select a country.'];
+      if (!state || state.length > 120) fields.state = ['Enter a state or province.'];
+      if (!city || city.length > 120) fields.city = ['Enter a city.'];
+      if (Object.keys(fields).length) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Please check the submitted fields.', fields);
+      }
+      if (db.prepare('SELECT 1 FROM CustomerProfile WHERE EmailNormalized = ?').get(email)) {
+        throw new ApiError(409, 'EMAIL_IN_USE', 'That email is already registered.');
+      }
+      const customerId = randomUUID();
+      const timestamp = now();
+      const profilePhoto = defaultProfilePhoto(sex);
+      const initialProfile = {
+        displayName,
+        birthDate,
+        sex,
+        countryCode,
+        state,
+        city,
+        maritalStatus: '',
+        workField: '',
+        englishLevel: '',
+        languages: [],
+        traits: [],
+        interests: [],
+        movies: [],
+        music: [],
+        goals: [],
+        preferredAgeMin: null,
+        preferredAgeMax: null,
+        lookingFor: '',
+        personalityType: '',
+        story: '',
+        profilePhoto
+      };
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          INSERT INTO CustomerProfile (
+            CustomerId, Email, EmailNormalized, Phone, PasswordHash, DisplayName,
+            BirthDate, Sex, GenderLookingFor, CountryCode, StateId, CityName,
+            Bio, ProfilePhoto, PublicPhotosJson, ProfileCompleted,
+            ProfileCompleteness, CreateTime, UpdateTime, Active, Seed,
+            CreditsRemain, TotalCharged
+          ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?,
+            '', ?, ?, 0, ?, ?, ?, 1, 0, 50, 0
+          )
+        `).run(
+          customerId,
+          email,
+          email,
+          body.phone || null,
+          hashPassword(password),
+          displayName,
+          birthDate,
+          sex,
+          countryCode,
+          state,
+          city,
+          profilePhoto,
+          JSON.stringify([profilePhoto]),
+          profileCompleteness(initialProfile),
+          timestamp,
+          timestamp
+        );
+        db.prepare(`
+          INSERT INTO CreditLedger (
+            CreditLedgerId, CustomerId, TransactionTime, TransactionType,
+            CreditsChange, BalanceAfter, ReferenceType, Remark
+          ) VALUES (?, ?, ?, 'RegistrationReward', 50, 50, 'Registration', ?)
+        `).run(randomUUID(), customerId, timestamp, 'One-time registration reward');
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      const sessionId = createSession(db, 'Customer', customerId, 'Customer');
+      setSessionCookie(res, sessionId);
+      audit(db, 'Customer', customerId, 'CustomerRegistered', 'Customer', customerId);
+      return json(res, 201, envelope({
+        customerId,
+        displayName,
+        registrationReward: { creditsGranted: 50, granted: true },
+        creditBalance: 50,
+        mustCompleteProfile: true
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/auth/staff/login') {
+      const body = await readJson(req);
+      const employee = db
+        .prepare('SELECT * FROM Employees WHERE Email = ?')
+        .get(String(body.email || '').trim().toLowerCase());
+      if (!employee || !employee.Active || !verifyPassword(body.password || '', employee.PasswordHash)) {
+        throw new ApiError(401, 'LOGIN_FAILED', 'Email or password is incorrect.');
+      }
+      const sessionId = createSession(db, 'Employee', employee.EmployeeId, employee.Role);
+      setSessionCookie(res, sessionId);
+      audit(db, 'Employee', employee.EmployeeId, 'StaffLogin', 'Session', sessionId, {
+        role: employee.Role
+      });
+      return json(res, 200, envelope({
+        employeeId: employee.EmployeeId,
+        displayName: employee.DisplayName,
+        role: employee.Role
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/auth/logout') {
+      const sessionId = parseCookies(req).de_session;
+      if (sessionId) db.prepare('DELETE FROM Sessions WHERE SessionId = ?').run(sessionId);
+      clearSessionCookie(res);
+      return json(res, 200, envelope({ loggedOut: true }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/me') {
+      const session = authenticate(db, req, 'Customer', {
+        allowPasswordChangeRequired: true
+      });
+      const customer = getCustomer(db, session.PrincipalId);
+      const profile = editableCustomerProfile(customer);
+      return json(res, 200, envelope({
+        ...profile,
+        active: Boolean(customer.Active),
+        creditBalance: customer.CreditsRemain,
+        mustChangePassword: Boolean(customer.MustChangePassword),
+        capabilities: {
+          discover: Boolean(customer.ProfileCompleted),
+          message: customer.CreditsRemain >= MESSAGE_COST,
+          buyCredits: true
+        }
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/customer/me/password') {
+      const session = authenticate(db, req, 'Customer', {
+        allowPasswordChangeRequired: true
+      });
+      const customer = db.prepare('SELECT * FROM CustomerProfile WHERE CustomerId = ?')
+        .get(session.PrincipalId);
+      const body = await readJson(req);
+      const currentPassword = String(body.currentPassword || '');
+      const newPassword = String(body.newPassword || '');
+      if (!verifyPassword(currentPassword, customer.PasswordHash)) {
+        throw new ApiError(422, 'CURRENT_PASSWORD_INCORRECT', 'The current password is incorrect.');
+      }
+      if (newPassword.length < 8) {
+        throw new ApiError(422, 'PASSWORD_TOO_SHORT', 'Use at least eight characters.');
+      }
+      if (currentPassword === newPassword) {
+        throw new ApiError(422, 'PASSWORD_UNCHANGED', 'Choose a different password.');
+      }
+      db.prepare(`
+        UPDATE CustomerProfile
+        SET PasswordHash = ?, MustChangePassword = 0
+        WHERE CustomerId = ?
+      `).run(hashPassword(newPassword), session.PrincipalId);
+      db.prepare(`
+        DELETE FROM Sessions
+        WHERE PrincipalType = 'Customer' AND PrincipalId = ? AND SessionId <> ?
+      `).run(session.PrincipalId, session.SessionId);
+      audit(db, 'Customer', session.PrincipalId, 'CustomerPasswordChanged', 'Customer', session.PrincipalId);
+      return json(res, 200, envelope({ passwordChanged: true }, requestId));
+    }
+
+    if (req.method === 'PATCH' && pathname === '/api/v1/customer/me') {
+      const session = authenticate(db, req, 'Customer');
+      const customer = getCustomer(db, session.PrincipalId);
+      const current = editableCustomerProfile(customer);
+      const body = await readJson(req);
+      const displayName = String(body.displayName ?? customer.DisplayName).trim();
+      const birthDate = String(body.birthDate ?? current.birthDate);
+      const sex = String(body.sex ?? current.sex).trim();
+      const countryCode = String(body.countryCode ?? current.countryCode).trim().toUpperCase();
+      const city = String(body.city ?? current.city).trim();
+      const state = String(body.state ?? current.state).trim();
+      const bio = String(body.bio ?? current.bio).trim();
+      const lookingFor = String(body.lookingFor ?? current.lookingFor).trim();
+      const maritalStatus = String(body.maritalStatus ?? current.maritalStatus).trim();
+      const workField = String(body.workField ?? current.workField).trim();
+      const englishLevel = String(body.englishLevel ?? current.englishLevel).trim();
+      const languages = cleanStringArray(body.languages ?? current.languages, 8);
+      const traits = cleanStringArray(body.traits ?? current.traits, 3);
+      const interests = cleanStringArray(body.interests ?? current.interests, 5);
+      const movies = cleanStringArray(body.movies ?? current.movies, 3);
+      const music = cleanStringArray(body.music ?? current.music, 3);
+      const goals = cleanStringArray(body.goals ?? current.goals, 3);
+      const minimumValue = body.preferredAgeMin ?? current.preferredAgeMin;
+      const maximumValue = body.preferredAgeMax ?? current.preferredAgeMax;
+      const preferredAgeMin =
+        minimumValue === null || minimumValue === '' ? null : Number(minimumValue);
+      const preferredAgeMax =
+        maximumValue === null || maximumValue === '' ? null : Number(maximumValue);
+      const personalityType = String(body.personalityType ?? current.personalityType).trim();
+      const story = String(body.story ?? current.story).trim();
+      let profilePhoto = String(body.profilePhoto ?? current.profilePhoto);
+      if (
+        profilePhoto.startsWith('/assets/profiles/default-') &&
+        sex !== current.sex
+      ) {
+        profilePhoto = defaultProfilePhoto(sex);
+      }
+      const publicPhotos = cleanStringArray(body.publicPhotos ?? current.publicPhotos, 3);
+      const privatePhotos = cleanStringArray(body.privatePhotos ?? current.privatePhotos, 3);
+      const fields = {};
+      if (displayName.length < 2 || displayName.length > 100) {
+        fields.displayName = ['Display name must contain 2 to 100 characters.'];
+      }
+      if (ageFromBirthDate(birthDate) < 18) fields.birthDate = ['You must be at least 18.'];
+      if (!['Man', 'Woman', 'Nonbinary', 'NotSpecified'].includes(sex)) {
+        fields.sex = ['Select your gender.'];
+      }
+      if (!/^[A-Z]{2}$/u.test(countryCode)) fields.countryCode = ['Select a country.'];
+      if (!state || state.length > 120) fields.state = ['Enter a state or province.'];
+      if (!city || city.length > 120) fields.city = ['Enter a valid city.'];
+      if (bio.length > 4000) fields.bio = ['Biography must not exceed 4,000 characters.'];
+      if (story.length > 4000) fields.story = ['Story must not exceed 4,000 characters.'];
+      if (!validProfilePhoto(profilePhoto)) fields.profilePhoto = ['Choose a JPG or PNG photo.'];
+      if (![...publicPhotos, ...privatePhotos].every(validProfilePhoto)) {
+        fields.photos = ['Photos must be JPG or PNG images.'];
+      }
+      if (
+        Number.isFinite(preferredAgeMin) &&
+        Number.isFinite(preferredAgeMax) &&
+        (preferredAgeMin < 18 || preferredAgeMax < preferredAgeMin || preferredAgeMax > 120)
+      ) {
+        fields.preferredAge = ['Enter a valid preferred age range.'];
+      }
+      const proposed = {
+        displayName,
+        birthDate,
+        sex,
+        countryCode,
+        state,
+        city,
+        maritalStatus,
+        workField,
+        englishLevel,
+        languages,
+        traits,
+        interests,
+        movies,
+        music,
+        goals,
+        preferredAgeMin,
+        preferredAgeMax,
+        lookingFor,
+        personalityType,
+        story,
+        profilePhoto
+      };
+      const completeness = profileCompleteness(proposed);
+      const completing = body.completeProfile === true || Boolean(customer.ProfileCompleted);
+      if (completing && completeness < 100) {
+        fields.profile = ['Complete every required profile section before continuing.'];
+      }
+      if (Object.keys(fields).length) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Please check the submitted fields.', fields);
+      }
+      const completed = completing && completeness === 100 ? 1 : 0;
+      const storedPublicPhotos = publicPhotos.length ? publicPhotos : [profilePhoto];
+      db.prepare(`
+        UPDATE CustomerProfile
+        SET DisplayName = ?, BirthDate = ?, Sex = ?, CountryCode = ?, StateId = ?,
+            CityName = ?, MaritalStatus = ?, WorkField = ?, EnglishLevel = ?,
+            LanguagesJson = ?, TraitsJson = ?, InterestsJson = ?,
+            MoviePreferencesJson = ?, MusicPreferencesJson = ?, GoalsJson = ?,
+            PreferredAgeMin = ?, PreferredAgeMax = ?, GenderLookingFor = ?,
+            PersonalityType = ?, Story = ?, Bio = ?, ProfilePhoto = ?,
+            PublicPhotosJson = ?, PrivatePhotosJson = ?, ProfileCompleted = ?,
+            ProfileCompleteness = ?, UpdateTime = ?
+        WHERE CustomerId = ?
+      `).run(
+        displayName,
+        birthDate,
+        sex,
+        countryCode,
+        state,
+        city,
+        maritalStatus || null,
+        workField || null,
+        englishLevel || null,
+        JSON.stringify(languages),
+        JSON.stringify(traits),
+        JSON.stringify(interests),
+        JSON.stringify(movies),
+        JSON.stringify(music),
+        JSON.stringify(goals),
+        preferredAgeMin,
+        preferredAgeMax,
+        lookingFor || null,
+        personalityType || null,
+        story || null,
+        bio,
+        profilePhoto,
+        JSON.stringify(storedPublicPhotos),
+        JSON.stringify(privatePhotos),
+        completed,
+        completeness,
+        now(),
+        session.PrincipalId
+      );
+      audit(db, 'Customer', session.PrincipalId, 'CustomerProfileUpdated', 'Customer', session.PrincipalId);
+      const updated = getCustomer(db, session.PrincipalId);
+      return json(res, 200, envelope(editableCustomerProfile(updated), requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/discovery/profiles') {
+      const session = authenticate(db, req, 'Customer');
+      const query = String(searchParams.get('query') || '').trim();
+      const like = `%${query}%`;
+      const rows = db.prepare(`
+        SELECT p.*,
+          EXISTS(
+            SELECT 1 FROM CustomerFavorites f
+            WHERE f.CustomerId = ? AND f.TargetCustomerId = p.CustomerId
+          ) AS Favorite
+        FROM CustomerProfile p
+        WHERE p.Active = 1 AND p.CustomerId <> ?
+          AND (? = '' OR p.DisplayName LIKE ? OR p.CityName LIKE ? OR p.Bio LIKE ?)
+        ORDER BY p.Seed DESC, p.DisplayName
+        LIMIT 20
+      `).all(session.PrincipalId, session.PrincipalId, query, like, like, like);
+      return json(res, 200, envelope({
+        items: rows.map((row) => normalizeCustomer(row, row.Favorite)),
+        page: { limit: 20, nextCursor: null, hasMore: false }
+      }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/favorites') {
+      const session = authenticate(db, req, 'Customer');
+      const rows = db.prepare(`
+        SELECT p.* FROM CustomerFavorites f
+        JOIN CustomerProfile p ON p.CustomerId = f.TargetCustomerId
+        WHERE f.CustomerId = ? AND p.Active = 1
+        ORDER BY f.CreateTime DESC
+        LIMIT 20
+      `).all(session.PrincipalId);
+      return json(res, 200, envelope({
+        items: rows.map((row) => normalizeCustomer(row, true)),
+        page: { limit: 20, nextCursor: null, hasMore: false }
+      }, requestId));
+    }
+
+    if (
+      req.method === 'GET' &&
+      (params = matchPath(pathname, '/api/v1/customer/profiles/:customerId'))
+    ) {
+      const session = authenticate(db, req, 'Customer');
+      const profile = getCustomer(db, params.customerId);
+      const favorite = Boolean(db.prepare(`
+        SELECT 1 FROM CustomerFavorites WHERE CustomerId = ? AND TargetCustomerId = ?
+      `).get(session.PrincipalId, params.customerId));
+      return json(res, 200, envelope(normalizeCustomer(profile, favorite), requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(pathname, '/api/v1/customer/profiles/:customerId/favorite'))
+    ) {
+      const session = authenticate(db, req, 'Customer');
+      getCustomer(db, params.customerId);
+      db.prepare(`
+        INSERT OR IGNORE INTO CustomerFavorites (
+          CustomerId, TargetCustomerId, CreateTime
+        ) VALUES (?, ?, ?)
+      `).run(session.PrincipalId, params.customerId, now());
+      return json(res, 200, envelope({ favorite: true }, requestId));
+    }
+
+    if (
+      req.method === 'DELETE' &&
+      (params = matchPath(pathname, '/api/v1/customer/profiles/:customerId/favorite'))
+    ) {
+      const session = authenticate(db, req, 'Customer');
+      db.prepare(`
+        DELETE FROM CustomerFavorites WHERE CustomerId = ? AND TargetCustomerId = ?
+      `).run(session.PrincipalId, params.customerId);
+      return json(res, 200, envelope({ favorite: false }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/conversations') {
+      const session = authenticate(db, req, 'Customer');
+      const rows = db.prepare(`
+        SELECT c.*,
+          CASE WHEN c.CustomerAId = ? THEN c.CustomerBId ELSE c.CustomerAId END AS OtherId,
+          (
+            SELECT Text FROM ChatRecords m
+            WHERE m.ConversationId = c.ConversationId
+            ORDER BY m.ChatTime DESC LIMIT 1
+          ) AS LastText
+        FROM Conversations c
+        WHERE c.CustomerAId = ? OR c.CustomerBId = ?
+        ORDER BY c.UpdatedAt DESC
+        LIMIT 20
+      `).all(session.PrincipalId, session.PrincipalId, session.PrincipalId);
+      const items = rows.map((row) => {
+        const other = getCustomer(db, row.OtherId);
+        const favorite = Boolean(db.prepare(`
+          SELECT 1 FROM CustomerFavorites WHERE CustomerId = ? AND TargetCustomerId = ?
+        `).get(session.PrincipalId, other.CustomerId));
+        return {
+          conversationId: row.ConversationId,
+          updatedAt: row.UpdatedAt,
+          lastText: row.LastText,
+          otherCustomer: normalizeCustomer(other, favorite)
+        };
+      });
+      return json(res, 200, envelope({
+        items,
+        page: { limit: 20, nextCursor: null, hasMore: false }
+      }, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(pathname, '/api/v1/customer/conversations/with/:customerId'))
+    ) {
+      const session = authenticate(db, req, 'Customer');
+      const conversation = findOrCreateConversation(db, session.PrincipalId, params.customerId);
+      return json(res, 200, envelope({
+        conversationId: conversation.ConversationId
+      }, requestId));
+    }
+
+    if (
+      req.method === 'GET' &&
+      (params = matchPath(pathname, '/api/v1/customer/conversations/:conversationId/messages'))
+    ) {
+      const session = authenticate(db, req, 'Customer');
+      const conversation = getConversation(db, params.conversationId, session.PrincipalId);
+      const otherId =
+        conversation.CustomerAId === session.PrincipalId
+          ? conversation.CustomerBId
+          : conversation.CustomerAId;
+      const messages = db.prepare(`
+        SELECT * FROM ChatRecords
+        WHERE ConversationId = ?
+        ORDER BY ChatTime ASC
+        LIMIT 100
+      `).all(params.conversationId);
+      const favorite = Boolean(db.prepare(`
+        SELECT 1 FROM CustomerFavorites WHERE CustomerId = ? AND TargetCustomerId = ?
+      `).get(session.PrincipalId, otherId));
+      return json(res, 200, envelope({
+        conversationId: params.conversationId,
+        otherCustomer: normalizeCustomer(getCustomer(db, otherId), favorite),
+        messages: messages.map((message) => ({
+          chatRecordId: message.ChatRecordId,
+          chatTime: message.ChatTime,
+          senderId: message.SenderId,
+          receiverId: message.ReceiverId,
+          text: message.Text,
+          messageType: message.MessageType,
+          creditUsed: message.CreditUsed,
+          responseSource: message.ResponseSource
+        }))
+      }, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(
+        pathname,
+        '/api/v1/customer/conversations/:conversationId/messages/text'
+      ))
+    ) {
+      const session = authenticate(db, req, 'Customer');
+      const body = await readJson(req);
+      const text = String(body.text || '').trim();
+      const count = wordCount(text);
+      if (!count) throw new ApiError(422, 'MESSAGE_EMPTY', 'Write a message first.');
+      if (count > MAX_MESSAGE_WORDS) {
+        throw new ApiError(422, 'MESSAGE_TOO_LONG', `Messages may contain at most ${MAX_MESSAGE_WORDS} words.`);
+      }
+      const idempotencyKey = String(req.headers['idempotency-key'] || '');
+      if (!idempotencyKey) {
+        throw new ApiError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'An idempotency key is required.');
+      }
+      const routeKey = `SendText:${params.conversationId}`;
+      const hash = requestHash({ text });
+      const prior = db.prepare(`
+        SELECT * FROM IdempotencyRecords
+        WHERE PrincipalId = ? AND RouteKey = ? AND IdempotencyKey = ?
+      `).get(session.PrincipalId, routeKey, idempotencyKey);
+      if (prior) {
+        if (prior.RequestHash !== hash) {
+          throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'That request key was already used.');
+        }
+        return json(res, 200, envelope(JSON.parse(prior.ResponseJson), requestId));
+      }
+
+      const conversation = getConversation(db, params.conversationId, session.PrincipalId);
+      const receiverId =
+        conversation.CustomerAId === session.PrincipalId
+          ? conversation.CustomerBId
+          : conversation.CustomerAId;
+      const receiver = getCustomer(db, receiverId);
+      const timestamp = now();
+      const chatRecordId = randomUUID();
+      let response;
+
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const debit = db.prepare(`
+          UPDATE CustomerProfile
+          SET CreditsRemain = CreditsRemain - ?
+          WHERE CustomerId = ? AND Active = 1 AND CreditsRemain >= ?
+        `).run(MESSAGE_COST, session.PrincipalId, MESSAGE_COST);
+        if (debit.changes !== 1) {
+          throw new ApiError(422, 'INSUFFICIENT_CREDITS', 'You need more credits to send this message.');
+        }
+        const balance = db
+          .prepare('SELECT CreditsRemain FROM CustomerProfile WHERE CustomerId = ?')
+          .get(session.PrincipalId).CreditsRemain;
+        db.prepare(`
+          INSERT INTO ChatRecords (
+            ChatRecordId, ConversationId, ChatTime, SenderId,
+            ReceiverId, Text, MessageType, CreditUsed
+          ) VALUES (?, ?, ?, ?, ?, ?, 'Text', ?)
+        `).run(
+          chatRecordId,
+          params.conversationId,
+          timestamp,
+          session.PrincipalId,
+          receiverId,
+          text,
+          MESSAGE_COST
+        );
+        db.prepare('UPDATE Conversations SET UpdatedAt = ? WHERE ConversationId = ?').run(
+          timestamp,
+          params.conversationId
+        );
+        db.prepare(`
+          INSERT INTO CreditLedger (
+            CreditLedgerId, CustomerId, TransactionTime, TransactionType,
+            CreditsChange, BalanceAfter, ReferenceType, ReferenceId, Remark
+          ) VALUES (?, ?, ?, 'TextMessageCharge', ?, ?, 'ChatRecord', ?, ?)
+        `).run(
+          randomUUID(),
+          session.PrincipalId,
+          timestamp,
+          -MESSAGE_COST,
+          balance,
+          chatRecordId,
+          'Prototype five-credit text message'
+        );
+        let robotReply = null;
+        if (receiver.Seed === CUSTOMER_TYPE.ROBOT) {
+          const generated = generateRobotReply(db, {
+            robot: receiver,
+            realCustomerId: session.PrincipalId,
+            conversationId: params.conversationId,
+            incomingChatRecordId: chatRecordId,
+            text,
+            timestamp: new Date(timestamp)
+          });
+          if (generated.reply) {
+            const robotReplyTime = new Date(Date.parse(timestamp) + 1).toISOString();
+            const robotReplyId = randomUUID();
+            db.prepare(`
+              INSERT INTO ChatRecords (
+                ChatRecordId, ConversationId, ChatTime, SenderId,
+                ReceiverId, Text, MessageType, CreditUsed, ResponseSource
+              ) VALUES (?, ?, ?, ?, ?, ?, 'Text', 0, ?)
+            `).run(
+              robotReplyId,
+              params.conversationId,
+              robotReplyTime,
+              receiverId,
+              session.PrincipalId,
+              generated.reply.text,
+              generated.reply.responseSource
+            );
+            robotReply = {
+              chatRecordId: robotReplyId,
+              chatTime: robotReplyTime,
+              senderId: receiverId,
+              receiverId: session.PrincipalId,
+              text: generated.reply.text,
+              responseSource: generated.reply.responseSource
+            };
+            if (generated.reply.usage) {
+              const usage = generated.reply.usage;
+              db.prepare(`
+                INSERT INTO RobotAIUsage (
+                  RobotAIUsageId, RobotCustomerId, ConversationId,
+                  IncomingChatRecordId, OutgoingChatRecordId, Provider, Model,
+                  RobotAIPolicyVersion, ResponseMode, InputTokens,
+                  CachedInputTokens, OutputTokens, EstimatedCost, CurrencyCode,
+                  LatencyMilliseconds, UsageStatus, SafetyResult,
+                  LocalValidationResult, CorrelationId, CreateTime
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD',
+                  1, 'Accepted', 'Passed', 'Passed', ?, ?)
+              `).run(
+                usage.robotAIUsageId,
+                receiverId,
+                params.conversationId,
+                chatRecordId,
+                robotReplyId,
+                usage.provider,
+                usage.model,
+                usage.policyVersion,
+                usage.responseMode,
+                usage.inputTokens,
+                usage.cachedInputTokens,
+                usage.outputTokens,
+                usage.estimatedCost,
+                randomUUID(),
+                robotReplyTime
+              );
+            }
+            db.prepare('UPDATE Conversations SET UpdatedAt = ? WHERE ConversationId = ?').run(
+              robotReplyTime,
+              params.conversationId
+            );
+            audit(
+              db,
+              'RobotCustomer',
+              receiverId,
+              'RobotCustomerResponseSent',
+              'ChatRecord',
+              robotReplyId,
+              {
+                conversationId: params.conversationId,
+                inReplyTo: chatRecordId,
+                responseSource: generated.reply.responseSource,
+                robotAIPolicyVersion: generated.reply.policyVersion
+              }
+            );
+          } else {
+            audit(
+              db,
+              'RobotCustomer',
+              receiverId,
+              'RobotCustomerResponseDeferred',
+              'ChatRecord',
+              chatRecordId,
+              { conversationId: params.conversationId, reason: generated.reason }
+            );
+          }
+        }
+        response = {
+          chatRecordId,
+          chatTime: timestamp,
+          creditUsed: MESSAGE_COST,
+          creditBalance: balance,
+          deliveryStatus: 'Accepted',
+          robotReply
+        };
+        db.prepare(`
+          INSERT INTO IdempotencyRecords (
+            PrincipalId, RouteKey, IdempotencyKey,
+            RequestHash, ResponseJson, CreateTime
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          session.PrincipalId,
+          routeKey,
+          idempotencyKey,
+          hash,
+          JSON.stringify(response),
+          timestamp
+        );
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return json(res, 201, envelope(response, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/gifts') {
+      authenticate(db, req, 'Customer');
+      return json(res, 200, envelope({ items: GIFTS }, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(pathname, '/api/v1/customer/conversations/:conversationId/gifts'))
+    ) {
+      const session = authenticate(db, req, 'Customer');
+      const body = await readJson(req);
+      const gift = GIFTS.find((item) => item.giftId === Number(body.giftId));
+      if (!gift) throw new ApiError(422, 'GIFT_NOT_FOUND', 'Choose an available gift.');
+      const idempotencyKey = String(req.headers['idempotency-key'] || '');
+      if (!idempotencyKey) {
+        throw new ApiError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'An idempotency key is required.');
+      }
+      const routeKey = `SendGift:${params.conversationId}`;
+      const hash = requestHash({ giftId: gift.giftId });
+      const prior = db.prepare(`
+        SELECT * FROM IdempotencyRecords
+        WHERE PrincipalId = ? AND RouteKey = ? AND IdempotencyKey = ?
+      `).get(session.PrincipalId, routeKey, idempotencyKey);
+      if (prior) {
+        if (prior.RequestHash !== hash) {
+          throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'That request key was already used.');
+        }
+        return json(res, 200, envelope(JSON.parse(prior.ResponseJson), requestId));
+      }
+
+      const conversation = getConversation(db, params.conversationId, session.PrincipalId);
+      const receiverId =
+        conversation.CustomerAId === session.PrincipalId
+          ? conversation.CustomerBId
+          : conversation.CustomerAId;
+      const receiver = getCustomer(db, receiverId);
+      const timestamp = now();
+      const chatRecordId = randomUUID();
+      const giftTransactionId = randomUUID();
+      let overseeingEmployeeId = null;
+      if (receiver.Seed === CUSTOMER_TYPE.SEED) {
+        const assignment = db.prepare(`
+          SELECT EmployeeId FROM EmployeeSeed
+          WHERE CustomerId = ? AND Active = 1
+          LIMIT 1
+        `).get(receiverId);
+        if (!assignment) {
+          throw new ApiError(422, 'GIFT_RECIPIENT_UNAVAILABLE', 'This gift cannot be delivered right now.');
+        }
+        overseeingEmployeeId = assignment.EmployeeId;
+      }
+
+      let response;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const debit = db.prepare(`
+          UPDATE CustomerProfile
+          SET CreditsRemain = CreditsRemain - ?
+          WHERE CustomerId = ? AND Active = 1 AND CreditsRemain >= ?
+        `).run(gift.senderCost, session.PrincipalId, gift.senderCost);
+        if (debit.changes !== 1) {
+          throw new ApiError(422, 'INSUFFICIENT_CREDITS', `You need ${gift.senderCost} credits to send ${gift.name}.`);
+        }
+        const senderBalance = db
+          .prepare('SELECT CreditsRemain FROM CustomerProfile WHERE CustomerId = ?')
+          .get(session.PrincipalId).CreditsRemain;
+        const giftText = `${gift.icon} ${gift.name}`;
+        db.prepare(`
+          INSERT INTO ChatRecords (
+            ChatRecordId, ConversationId, ChatTime, SenderId,
+            ReceiverId, Text, MessageType, CreditUsed
+          ) VALUES (?, ?, ?, ?, ?, ?, 'Gift', ?)
+        `).run(
+          chatRecordId,
+          params.conversationId,
+          timestamp,
+          session.PrincipalId,
+          receiverId,
+          giftText,
+          gift.senderCost
+        );
+        db.prepare(`
+          INSERT INTO GiftTransactions (
+            GiftTransactionId, ConversationId, ChatRecordId, SenderCustomerId,
+            ReceiverCustomerId, GiftId, GiftName, SenderCost, RecipientCredits,
+            PlatformCredits, OverseeingEmployeeId, CreateTime
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          giftTransactionId,
+          params.conversationId,
+          chatRecordId,
+          session.PrincipalId,
+          receiverId,
+          gift.giftId,
+          gift.name,
+          gift.senderCost,
+          gift.recipientCredits,
+          gift.platformCredits,
+          overseeingEmployeeId,
+          timestamp
+        );
+        db.prepare(`
+          INSERT INTO CreditLedger (
+            CreditLedgerId, CustomerId, TransactionTime, TransactionType,
+            CreditsChange, BalanceAfter, ReferenceType, ReferenceId, Remark
+          ) VALUES (?, ?, ?, 'GiftSent', ?, ?, 'GiftTransaction', ?, ?)
+        `).run(
+          randomUUID(),
+          session.PrincipalId,
+          timestamp,
+          -gift.senderCost,
+          senderBalance,
+          giftTransactionId,
+          `${gift.name} gift sent; final and non-refundable`
+        );
+        if (receiver.Seed === CUSTOMER_TYPE.SEED) {
+          const employeeBalance = db.prepare(`
+            SELECT COALESCE(SUM(CreditsChange), 0) AS Balance
+            FROM EmployeeCreditLedger WHERE EmployeeId = ?
+          `).get(overseeingEmployeeId).Balance + gift.recipientCredits;
+          db.prepare(`
+            INSERT INTO EmployeeCreditLedger (
+              EmployeeCreditLedgerId, EmployeeId, GiftTransactionId,
+              TransactionTime, CreditsChange, BalanceAfter, Remark
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            randomUUID(),
+            overseeingEmployeeId,
+            giftTransactionId,
+            timestamp,
+            gift.recipientCredits,
+            employeeBalance,
+            `80% share from ${gift.name} received by assigned virtual profile`
+          );
+        } else {
+          db.prepare(`
+            UPDATE CustomerProfile SET CreditsRemain = CreditsRemain + ?
+            WHERE CustomerId = ?
+          `).run(gift.recipientCredits, receiverId);
+          const receiverBalance = db
+            .prepare('SELECT CreditsRemain FROM CustomerProfile WHERE CustomerId = ?')
+            .get(receiverId).CreditsRemain;
+          db.prepare(`
+            INSERT INTO CreditLedger (
+              CreditLedgerId, CustomerId, TransactionTime, TransactionType,
+              CreditsChange, BalanceAfter, ReferenceType, ReferenceId, Remark
+            ) VALUES (?, ?, ?, 'GiftReceived', ?, ?, 'GiftTransaction', ?, ?)
+          `).run(
+            randomUUID(),
+            receiverId,
+            timestamp,
+            gift.recipientCredits,
+            receiverBalance,
+            giftTransactionId,
+            `80% recipient share from ${gift.name}`
+          );
+        }
+        db.prepare('UPDATE Conversations SET UpdatedAt = ? WHERE ConversationId = ?').run(
+          timestamp,
+          params.conversationId
+        );
+        response = {
+          giftTransactionId,
+          chatRecordId,
+          gift,
+          creditUsed: gift.senderCost,
+          creditBalance: senderBalance,
+          deliveryStatus: 'Accepted',
+          refundable: false
+        };
+        db.prepare(`
+          INSERT INTO IdempotencyRecords (
+            PrincipalId, RouteKey, IdempotencyKey,
+            RequestHash, ResponseJson, CreateTime
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          session.PrincipalId,
+          routeKey,
+          idempotencyKey,
+          hash,
+          JSON.stringify(response),
+          timestamp
+        );
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return json(res, 201, envelope(response, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/credits/balance') {
+      const session = authenticate(db, req, 'Customer');
+      const customer = getCustomer(db, session.PrincipalId);
+      return json(res, 200, envelope({
+        creditBalance: customer.CreditsRemain,
+        asOf: now()
+      }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/credits/packages') {
+      authenticate(db, req, 'Customer');
+      return json(res, 200, envelope({ items: CREDIT_PACKAGES }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/customer/credits/ledger') {
+      const session = authenticate(db, req, 'Customer');
+      const rows = db.prepare(`
+        SELECT * FROM CreditLedger WHERE CustomerId = ?
+        ORDER BY TransactionTime DESC LIMIT 20
+      `).all(session.PrincipalId);
+      return json(res, 200, envelope({
+        items: rows.map((row) => ({
+          creditLedgerId: row.CreditLedgerId,
+          transactionTime: row.TransactionTime,
+          transactionType: row.TransactionType,
+          creditsChange: row.CreditsChange,
+          balanceAfter: row.BalanceAfter,
+          remark: row.Remark
+        })),
+        page: { limit: 20, nextCursor: null, hasMore: false }
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/customer/credit-purchases/simulate') {
+      const session = authenticate(db, req, 'Customer');
+      const body = await readJson(req);
+      const selected = CREDIT_PACKAGES.find((item) => item.packageId === Number(body.packageId));
+      if (!selected) throw new ApiError(422, 'PACKAGE_NOT_FOUND', 'Choose a credit package.');
+      const cardholderName = String(body.cardholderName || '').trim();
+      const cardNumber = String(body.cardNumber || '').replace(/\D/gu, '');
+      const expirationMonth = Number(body.expirationMonth);
+      const expirationYear = Number(body.expirationYear);
+      const securityCode = String(body.securityCode || '').trim();
+      const fields = {};
+      if (cardholderName.length < 2 || cardholderName.length > 120) {
+        fields.cardholderName = ['Enter the name shown on the card.'];
+      }
+      if (!validCardNumber(cardNumber)) fields.cardNumber = ['Enter a valid card number.'];
+      const current = new Date();
+      const currentYear = current.getUTCFullYear();
+      const currentMonth = current.getUTCMonth() + 1;
+      if (
+        !Number.isInteger(expirationMonth) ||
+        expirationMonth < 1 ||
+        expirationMonth > 12 ||
+        !Number.isInteger(expirationYear) ||
+        expirationYear < currentYear ||
+        expirationYear > currentYear + 20 ||
+        (expirationYear === currentYear && expirationMonth < currentMonth)
+      ) {
+        fields.expiration = ['Enter a valid future expiration date.'];
+      }
+      if (!/^\d{3,4}$/u.test(securityCode)) {
+        fields.securityCode = ['Enter the three or four digit security code.'];
+      }
+      if (Object.keys(fields).length) {
+        throw new ApiError(422, 'PAYMENT_VALIDATION_FAILED', 'Please check the card details.', fields);
+      }
+      const cardType = cardTypeFromNumber(cardNumber);
+      const cardLast4 = cardNumber.slice(-4);
+      const idempotencyKey = String(req.headers['idempotency-key'] || '');
+      if (!idempotencyKey) {
+        throw new ApiError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'An idempotency key is required.');
+      }
+      const routeKey = 'SimulateCreditPurchase';
+      const hash = requestHash({
+        packageId: selected.packageId,
+        cardholderName,
+        cardType,
+        cardLast4,
+        expirationMonth,
+        expirationYear
+      });
+      const prior = db.prepare(`
+        SELECT * FROM IdempotencyRecords
+        WHERE PrincipalId = ? AND RouteKey = ? AND IdempotencyKey = ?
+      `).get(session.PrincipalId, routeKey, idempotencyKey);
+      if (prior) {
+        if (prior.RequestHash !== hash) {
+          throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'That request key was already used.');
+        }
+        return json(res, 200, envelope(JSON.parse(prior.ResponseJson), requestId));
+      }
+      const timestamp = now();
+      const chargeRecordId = randomUUID();
+      let balance;
+      let response;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          INSERT INTO ChargeRecord (
+            ChargeRecordId, CustomerId, ChargeTime, Amount, CreditsBought,
+            Status, ProviderReference, CardholderName, CardType, CardLast4,
+            ExpirationMonth, ExpirationYear
+          ) VALUES (?, ?, ?, ?, ?, 'PrototypeSimulated', ?, ?, ?, ?, ?, ?)
+        `).run(
+          chargeRecordId,
+          session.PrincipalId,
+          timestamp,
+          selected.amount,
+          selected.credits,
+          `sim_${randomToken(8)}`,
+          cardholderName,
+          cardType,
+          cardLast4,
+          expirationMonth,
+          expirationYear
+        );
+        db.prepare(`
+          UPDATE CustomerProfile
+          SET CreditsRemain = CreditsRemain + ?, TotalCharged = TotalCharged + ?
+          WHERE CustomerId = ?
+        `).run(selected.credits, selected.amount, session.PrincipalId);
+        balance = db
+          .prepare('SELECT CreditsRemain FROM CustomerProfile WHERE CustomerId = ?')
+          .get(session.PrincipalId).CreditsRemain;
+        db.prepare(`
+          INSERT INTO CreditLedger (
+            CreditLedgerId, CustomerId, TransactionTime, TransactionType,
+            CreditsChange, BalanceAfter, ReferenceType, ReferenceId, Remark
+          ) VALUES (?, ?, ?, 'CreditPurchase', ?, ?, 'ChargeRecord', ?, ?)
+        `).run(
+          randomUUID(),
+          session.PrincipalId,
+          timestamp,
+          selected.credits,
+          balance,
+          chargeRecordId,
+          'Simulated prototype purchase; no real card was charged'
+        );
+        response = {
+          chargeRecordId,
+          amount: selected.amount,
+          creditsBought: selected.credits,
+          creditBalance: balance,
+          status: 'PrototypeSimulated',
+          paymentMethod: {
+            cardholderName,
+            cardType,
+            cardLast4,
+            expirationMonth,
+            expirationYear
+          }
+        };
+        db.prepare(`
+          INSERT INTO IdempotencyRecords (
+            PrincipalId, RouteKey, IdempotencyKey,
+            RequestHash, ResponseJson, CreateTime
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          session.PrincipalId,
+          routeKey,
+          idempotencyKey,
+          hash,
+          JSON.stringify(response),
+          timestamp
+        );
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return json(res, 201, envelope(response, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(pathname, '/api/v1/backend/conversations/:conversationId/messages'))
+    ) {
+      const session = authenticate(db, req, 'Employee');
+      if (session.Role !== 'ChatEmployee') {
+        throw new ApiError(403, 'FORBIDDEN', 'Employee workspace access is required.');
+      }
+      const body = await readJson(req);
+      const text = String(body.text || '').trim();
+      const count = wordCount(text);
+      if (!count) throw new ApiError(422, 'MESSAGE_EMPTY', 'Write or select a response first.');
+      if (count > MAX_MESSAGE_WORDS) {
+        throw new ApiError(422, 'MESSAGE_TOO_LONG', `Responses may contain at most ${MAX_MESSAGE_WORDS} words.`);
+      }
+      const preparedReplyId = body.preparedReplyId
+        ? String(body.preparedReplyId)
+        : null;
+      const preparedReply = preparedReplyId
+        ? PREPARED_REPLIES.find((reply) => reply.preparedReplyId === preparedReplyId)
+        : null;
+      if (preparedReplyId && !preparedReply) {
+        throw new ApiError(422, 'PREPARED_REPLY_NOT_FOUND', 'That prepared answer is no longer available.');
+      }
+      const responseSource = preparedReply
+        ? preparedReply.text === text
+          ? 'PreparedText'
+          : 'PreparedEdited'
+        : 'EmployeeWritten';
+      const idempotencyKey = String(req.headers['idempotency-key'] || '');
+      if (!idempotencyKey) {
+        throw new ApiError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'An idempotency key is required.');
+      }
+      const routeKey = `EmployeeSend:${params.conversationId}`;
+      const hash = requestHash({ text, preparedReplyId });
+      const prior = db.prepare(`
+        SELECT * FROM IdempotencyRecords
+        WHERE PrincipalId = ? AND RouteKey = ? AND IdempotencyKey = ?
+      `).get(session.PrincipalId, routeKey, idempotencyKey);
+      if (prior) {
+        if (prior.RequestHash !== hash) {
+          throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'That request key was already used.');
+        }
+        return json(res, 200, envelope(JSON.parse(prior.ResponseJson), requestId));
+      }
+
+      const conversation = getEmployeeConversation(
+        db,
+        params.conversationId,
+        session.PrincipalId
+      );
+      const timestamp = now();
+      const chatRecordId = randomUUID();
+      const response = {
+        chatRecordId,
+        conversationId: params.conversationId,
+        chatTime: timestamp,
+        senderId: conversation.SeedCustomerId,
+        receiverId: conversation.RealCustomerId,
+        text,
+        messageType: 'Text',
+        creditUsed: 0,
+        responseSource,
+        preparedReplyId
+      };
+
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          INSERT INTO ChatRecords (
+            ChatRecordId, ConversationId, ChatTime, SenderId, ReceiverId,
+            Text, MessageType, CreditUsed, ActingEmployeeId,
+            ResponseSource, PreparedTextId
+          ) VALUES (?, ?, ?, ?, ?, ?, 'Text', 0, ?, ?, ?)
+        `).run(
+          chatRecordId,
+          params.conversationId,
+          timestamp,
+          conversation.SeedCustomerId,
+          conversation.RealCustomerId,
+          text,
+          session.PrincipalId,
+          responseSource,
+          preparedReplyId
+        );
+        db.prepare('UPDATE Conversations SET UpdatedAt = ? WHERE ConversationId = ?').run(
+          timestamp,
+          params.conversationId
+        );
+        db.prepare(`
+          INSERT INTO IdempotencyRecords (
+            PrincipalId, RouteKey, IdempotencyKey,
+            RequestHash, ResponseJson, CreateTime
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          session.PrincipalId,
+          routeKey,
+          idempotencyKey,
+          hash,
+          JSON.stringify(response),
+          timestamp
+        );
+        audit(
+          db,
+          'Employee',
+          session.PrincipalId,
+          'SeedConversationResponseSent',
+          'ChatRecord',
+          chatRecordId,
+          {
+            conversationId: params.conversationId,
+            seedCustomerId: conversation.SeedCustomerId,
+            realCustomerId: conversation.RealCustomerId,
+            responseSource,
+            preparedReplyId
+          }
+        );
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return json(res, 201, envelope(response, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/backend/workspace') {
+      const session = authenticate(db, req, 'Employee');
+      if (session.Role !== 'ChatEmployee') {
+        throw new ApiError(403, 'FORBIDDEN', 'Employee workspace access is required.');
+      }
+      const employee = db
+        .prepare('SELECT * FROM Employees WHERE EmployeeId = ?')
+        .get(session.PrincipalId);
+      const assigned = db.prepare(`
+        SELECT p.* FROM EmployeeSeed es
+        JOIN CustomerProfile p ON p.CustomerId = es.CustomerId
+        WHERE es.EmployeeId = ? AND es.Active = 1
+          AND p.Seed = 1
+        ORDER BY p.DisplayName LIMIT 20
+      `).all(session.PrincipalId);
+      const chatSlots = [];
+      const seedCounts = new Map();
+      for (const seed of assigned) {
+        const conversations = db.prepare(`
+          SELECT c.*,
+            CASE WHEN c.CustomerAId = ? THEN c.CustomerBId ELSE c.CustomerAId END AS RealCustomerId
+          FROM Conversations c
+          JOIN CustomerProfile real
+            ON real.CustomerId = CASE
+              WHEN c.CustomerAId = ? THEN c.CustomerBId ELSE c.CustomerAId
+            END
+          WHERE (c.CustomerAId = ? OR c.CustomerBId = ?)
+            AND real.Seed = 0
+            AND real.Active = 1
+          ORDER BY c.UpdatedAt DESC
+        `).all(seed.CustomerId, seed.CustomerId, seed.CustomerId, seed.CustomerId);
+        let waitingCount = 0;
+        for (const conversation of conversations) {
+          const messages = db.prepare(`
+            SELECT * FROM ChatRecords
+            WHERE ConversationId = ?
+            ORDER BY ChatTime ASC
+            LIMIT 20
+          `).all(conversation.ConversationId);
+          const latest = messages.at(-1);
+          const waitingForEmployee = Boolean(
+            latest && latest.SenderId === conversation.RealCustomerId
+          );
+          if (waitingForEmployee) waitingCount += 1;
+          chatSlots.push({
+            conversationId: conversation.ConversationId,
+            updatedAt: conversation.UpdatedAt,
+            status: waitingForEmployee ? 'Waiting for response' : 'Responded',
+            waitingForEmployee,
+            seed: normalizeCustomer(seed, false, { includeType: true }),
+            realCustomer: normalizeCustomer(
+              getCustomer(db, conversation.RealCustomerId),
+              false,
+              { includeType: true }
+            ),
+            messages: messages.map((message) => ({
+              chatRecordId: message.ChatRecordId,
+              chatTime: message.ChatTime,
+              senderId: message.SenderId,
+              receiverId: message.ReceiverId,
+              text: message.Text,
+              messageType: message.MessageType,
+              responseSource: message.ResponseSource
+            }))
+          });
+        }
+        seedCounts.set(seed.CustomerId, {
+          conversationCount: conversations.length,
+          waitingCount
+        });
+      }
+      chatSlots.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      const visibleSlots = chatSlots.slice(0, 10);
+      return json(res, 200, envelope({
+        employee: {
+          employeeId: employee.EmployeeId,
+          displayName: employee.DisplayName,
+          role: employee.Role
+        },
+        assignedSeeds: assigned.map((row) => ({
+          ...normalizeCustomer(row, false, { includeType: true }),
+          ...(seedCounts.get(row.CustomerId) || {
+            conversationCount: 0,
+            waitingCount: 0
+          })
+        })),
+        chatSlots: visibleSlots,
+        capacity: {
+          assignedSeeds: assigned.length,
+          activeSeeds: assigned.length,
+          maximumActiveSeeds: 20,
+          openChats: visibleSlots.length,
+          maximumOpenChats: 10
+        },
+        preparedReplies: PREPARED_REPLIES
+      }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/admin/password-reset-requests') {
+      requireAdmin(db, req);
+      const rows = db.prepare(`
+        SELECT r.*, c.DisplayName, c.Email
+        FROM PasswordResetRequests r
+        JOIN CustomerProfile c ON c.CustomerId = r.CustomerId
+        ORDER BY CASE WHEN r.Status = 'Pending' THEN 0 ELSE 1 END, r.RequestTime DESC
+        LIMIT 20
+      `).all();
+      return json(res, 200, envelope({
+        items: rows.map((row) => ({
+          passwordResetRequestId: row.PasswordResetRequestId,
+          customerId: row.CustomerId,
+          customerName: row.DisplayName,
+          customerEmail: row.Email,
+          contactType: row.ContactType,
+          contactValueMasked: row.ContactValueMasked,
+          status: row.Status,
+          requestTime: row.RequestTime,
+          decisionTime: row.DecisionTime,
+          deliveryChannel: row.DeliveryChannel
+        }))
+      }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/admin/outgoing-payments') {
+      const session = requireAdmin(db, req);
+      if (session.Role !== 'Administrator') {
+        throw new ApiError(403, 'PAYMENT_PREPARATION_ROLE_REQUIRED', 'Administrator payment preparation access is required.');
+      }
+      const rows = db.prepare(`
+        SELECT p.*, requester.DisplayName AS RequestedByName,
+          decider.DisplayName AS DecidedByName
+        FROM OutgoingPaymentRequests p
+        JOIN Employees requester ON requester.EmployeeId = p.RequestedByEmployeeId
+        LEFT JOIN Employees decider ON decider.EmployeeId = p.DecidedByEmployeeId
+        ORDER BY CASE p.Status WHEN 'Pending' THEN 0 ELSE 1 END, p.RequestTime DESC
+        LIMIT 20
+      `).all();
+      return json(res, 200, envelope({
+        items: rows.map(normalizeOutgoingPayment)
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/admin/outgoing-payments') {
+      const session = requireAdmin(db, req);
+      if (session.Role !== 'Administrator') {
+        throw new ApiError(403, 'PAYMENT_PREPARATION_ROLE_REQUIRED', 'Administrator payment preparation access is required.');
+      }
+      const body = await readJson(req);
+      const payeeName = String(body.payeeName || '').trim();
+      const category = String(body.category || '').trim();
+      const description = String(body.description || '').trim();
+      const currencyCode = String(body.currencyCode || 'USD').trim().toUpperCase();
+      const amount = Number(body.amount);
+      if (
+        payeeName.length < 2 ||
+        category.length < 2 ||
+        description.length < 5 ||
+        !Number.isFinite(amount) ||
+        amount <= 0 ||
+        !/^[A-Z]{3}$/u.test(currencyCode)
+      ) {
+        throw new ApiError(
+          422,
+          'VALIDATION_FAILED',
+          'Enter a valid payee, category, positive amount, currency, and description.'
+        );
+      }
+      const outgoingPaymentRequestId = randomUUID();
+      const timestamp = now();
+      db.prepare(`
+        INSERT INTO OutgoingPaymentRequests (
+          OutgoingPaymentRequestId, PayeeName, Category, Amount,
+          CurrencyCode, Description, Status, RequestTime, RequestedByEmployeeId
+        ) VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?, ?)
+      `).run(
+        outgoingPaymentRequestId,
+        payeeName,
+        category,
+        amount,
+        currencyCode,
+        description,
+        timestamp,
+        session.PrincipalId
+      );
+      audit(
+        db,
+        'Employee',
+        session.PrincipalId,
+        'OutgoingPaymentPrepared',
+        'OutgoingPaymentRequest',
+        outgoingPaymentRequestId,
+        { payeeName, category, amount, currencyCode }
+      );
+      const row = db.prepare(`
+        SELECT p.*, requester.DisplayName AS RequestedByName,
+          NULL AS DecidedByName
+        FROM OutgoingPaymentRequests p
+        JOIN Employees requester ON requester.EmployeeId = p.RequestedByEmployeeId
+        WHERE p.OutgoingPaymentRequestId = ?
+      `).get(outgoingPaymentRequestId);
+      return json(res, 201, envelope({
+        payment: normalizeOutgoingPayment(row)
+      }, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(pathname, '/api/v1/admin/password-reset-requests/:requestId/approve'))
+    ) {
+      const session = requireAdmin(db, req);
+      const reset = db.prepare(`
+        SELECT * FROM PasswordResetRequests WHERE PasswordResetRequestId = ?
+      `).get(params.requestId);
+      if (!reset) throw new ApiError(404, 'PASSWORD_RESET_NOT_FOUND', 'Password reset request not found.');
+      if (reset.Status !== 'Pending') {
+        throw new ApiError(409, 'PASSWORD_RESET_ALREADY_DECIDED', 'This request was already decided.');
+      }
+      const generated = temporaryPassword();
+      const timestamp = now();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          UPDATE CustomerProfile
+          SET PasswordHash = ?, MustChangePassword = 1
+          WHERE CustomerId = ?
+        `).run(hashPassword(generated), reset.CustomerId);
+        db.prepare(`
+          UPDATE PasswordResetRequests
+          SET Status = 'Approved', DecisionTime = ?, DecidedByEmployeeId = ?,
+              Remark = 'Temporary password sent through simulated delivery provider.'
+          WHERE PasswordResetRequestId = ?
+        `).run(timestamp, session.PrincipalId, params.requestId);
+        db.prepare(`
+          DELETE FROM Sessions WHERE PrincipalType = 'Customer' AND PrincipalId = ?
+        `).run(reset.CustomerId);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      audit(db, 'Employee', session.PrincipalId, 'PasswordResetApproved', 'PasswordResetRequest', params.requestId);
+      return json(res, 200, envelope({
+        approved: true,
+        deliveryChannel: reset.ContactType,
+        temporaryPassword: generated,
+        mustChangePassword: true
+      }, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(pathname, '/api/v1/admin/password-reset-requests/:requestId/reject'))
+    ) {
+      const session = requireAdmin(db, req);
+      const result = db.prepare(`
+        UPDATE PasswordResetRequests
+        SET Status = 'Rejected', DecisionTime = ?, DecidedByEmployeeId = ?
+        WHERE PasswordResetRequestId = ? AND Status = 'Pending'
+      `).run(now(), session.PrincipalId, params.requestId);
+      if (result.changes !== 1) {
+        throw new ApiError(409, 'PASSWORD_RESET_ALREADY_DECIDED', 'This request is missing or already decided.');
+      }
+      audit(db, 'Employee', session.PrincipalId, 'PasswordResetRejected', 'PasswordResetRequest', params.requestId);
+      return json(res, 200, envelope({ rejected: true }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/admin/employees') {
+      requireAdmin(db, req);
+      const rows = db.prepare(`
+        SELECT * FROM Employees ORDER BY Active DESC, Role, DisplayName LIMIT 20
+      `).all();
+      return json(res, 200, envelope({ items: rows.map(normalizeEmployee) }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/admin/employees') {
+      const session = requireAdmin(db, req);
+      const body = await readJson(req);
+      const email = String(body.email || '').trim().toLowerCase();
+      const displayName = String(body.displayName || '').trim();
+      const role = String(body.role || '');
+      if (!email.includes('@') || displayName.length < 2 || !['ChatEmployee', 'Administrator', 'CEO'].includes(role)) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Enter a valid name, email, and employee role.');
+      }
+      if (db.prepare('SELECT 1 FROM Employees WHERE Email = ?').get(email)) {
+        throw new ApiError(409, 'EMAIL_IN_USE', 'That employee email is already registered.');
+      }
+      const employeeId = randomUUID();
+      const generated = temporaryPassword();
+      db.prepare(`
+        INSERT INTO Employees (
+          EmployeeId, Email, PasswordHash, DisplayName, EmployeeType,
+          Role, Active, StartDate, Remark
+        ) VALUES (?, ?, ?, ?, 'Human', ?, 1, ?, ?)
+      `).run(
+        employeeId,
+        email,
+        hashPassword(generated),
+        displayName,
+        role,
+        now().slice(0, 10),
+        String(body.remark || '')
+      );
+      audit(db, 'Employee', session.PrincipalId, 'EmployeeCreated', 'Employee', employeeId, { role });
+      return json(res, 201, envelope({
+        employee: normalizeEmployee(db.prepare('SELECT * FROM Employees WHERE EmployeeId = ?').get(employeeId)),
+        temporaryPassword: generated
+      }, requestId));
+    }
+
+    if (
+      req.method === 'PATCH' &&
+      (params = matchPath(pathname, '/api/v1/admin/employees/:employeeId'))
+    ) {
+      const session = requireAdmin(db, req);
+      const employee = db.prepare('SELECT * FROM Employees WHERE EmployeeId = ?').get(params.employeeId);
+      if (!employee) throw new ApiError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found.');
+      const body = await readJson(req);
+      const displayName = String(body.displayName ?? employee.DisplayName).trim();
+      const email = String(body.email ?? employee.Email).trim().toLowerCase();
+      const role = String(body.role ?? employee.Role);
+      const active = body.active === undefined ? employee.Active : Number(Boolean(body.active));
+      if (!email.includes('@') || displayName.length < 2 || !['ChatEmployee', 'Administrator', 'CEO'].includes(role)) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Enter a valid name, email, and employee role.');
+      }
+      if (session.PrincipalId === employee.EmployeeId && !active) {
+        throw new ApiError(422, 'CANNOT_DEACTIVATE_SELF', 'You cannot deactivate your own account.');
+      }
+      db.prepare(`
+        UPDATE Employees
+        SET DisplayName = ?, Email = ?, Role = ?, Active = ?, Remark = ?
+        WHERE EmployeeId = ?
+      `).run(displayName, email, role, active, String(body.remark ?? employee.Remark ?? ''), employee.EmployeeId);
+      if (!active) {
+        db.prepare(`DELETE FROM Sessions WHERE PrincipalType = 'Employee' AND PrincipalId = ?`)
+          .run(employee.EmployeeId);
+      }
+      audit(db, 'Employee', session.PrincipalId, 'EmployeeUpdated', 'Employee', employee.EmployeeId, {
+        role,
+        active: Boolean(active)
+      });
+      return json(res, 200, envelope({
+        employee: normalizeEmployee(db.prepare('SELECT * FROM Employees WHERE EmployeeId = ?').get(employee.EmployeeId))
+      }, requestId));
+    }
+
+    if (
+      req.method === 'DELETE' &&
+      (params = matchPath(pathname, '/api/v1/admin/employees/:employeeId'))
+    ) {
+      const session = requireAdmin(db, req);
+      if (session.PrincipalId === params.employeeId) {
+        throw new ApiError(422, 'CANNOT_DEACTIVATE_SELF', 'You cannot remove your own account.');
+      }
+      const result = db.prepare('UPDATE Employees SET Active = 0 WHERE EmployeeId = ?')
+        .run(params.employeeId);
+      if (result.changes !== 1) throw new ApiError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found.');
+      db.prepare(`DELETE FROM Sessions WHERE PrincipalType = 'Employee' AND PrincipalId = ?`)
+        .run(params.employeeId);
+      audit(db, 'Employee', session.PrincipalId, 'EmployeeDeactivated', 'Employee', params.employeeId);
+      return json(res, 200, envelope({ removed: true }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/admin/policies') {
+      requireAdmin(db, req);
+      const rows = db.prepare('SELECT * FROM PolicyDefinitions ORDER BY Title LIMIT 20').all();
+      return json(res, 200, envelope({
+        items: rows.map((row) => ({
+          policyId: row.PolicyId,
+          policyKey: row.PolicyKey,
+          title: row.Title,
+          description: row.Description,
+          value: row.PolicyValue,
+          active: Boolean(row.Active),
+          version: row.Version,
+          updateTime: row.UpdateTime
+        }))
+      }, requestId));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/v1/admin/policies') {
+      const session = requireAdmin(db, req);
+      const body = await readJson(req);
+      const key = String(body.policyKey || '').trim().toLowerCase().replace(/\s+/gu, '_');
+      const title = String(body.title || '').trim();
+      const description = String(body.description || '').trim();
+      const value = String(body.value ?? '').trim();
+      if (!/^[a-z][a-z0-9_]{2,60}$/u.test(key) || title.length < 3 || !value) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Enter a valid policy key, title, and value.');
+      }
+      const policyId = randomUUID();
+      const timestamp = now();
+      db.prepare(`
+        INSERT INTO PolicyDefinitions (
+          PolicyId, PolicyKey, Title, Description, PolicyValue,
+          Active, Version, CreateTime, UpdateTime, UpdatedByEmployeeId
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `).run(
+        policyId,
+        key,
+        title,
+        description,
+        value,
+        body.active === false ? 0 : 1,
+        timestamp,
+        timestamp,
+        session.PrincipalId
+      );
+      audit(db, 'Employee', session.PrincipalId, 'PolicyCreated', 'Policy', policyId, { key });
+      return json(res, 201, envelope({ policyId }, requestId));
+    }
+
+    if (
+      req.method === 'PATCH' &&
+      (params = matchPath(pathname, '/api/v1/admin/policies/:policyId'))
+    ) {
+      const session = requireAdmin(db, req);
+      const policy = db.prepare('SELECT * FROM PolicyDefinitions WHERE PolicyId = ?').get(params.policyId);
+      if (!policy) throw new ApiError(404, 'POLICY_NOT_FOUND', 'Policy not found.');
+      const body = await readJson(req);
+      const title = String(body.title ?? policy.Title).trim();
+      const description = String(body.description ?? policy.Description).trim();
+      const value = String(body.value ?? policy.PolicyValue).trim();
+      const active = body.active === undefined ? policy.Active : Number(Boolean(body.active));
+      if (title.length < 3 || !value) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Policy title and value are required.');
+      }
+      db.prepare(`
+        UPDATE PolicyDefinitions
+        SET Title = ?, Description = ?, PolicyValue = ?, Active = ?,
+            Version = Version + 1, UpdateTime = ?, UpdatedByEmployeeId = ?
+        WHERE PolicyId = ?
+      `).run(title, description, value, active, now(), session.PrincipalId, policy.PolicyId);
+      audit(db, 'Employee', session.PrincipalId, active ? 'PolicyEnabledOrUpdated' : 'PolicyDisabled', 'Policy', policy.PolicyId);
+      return json(res, 200, envelope({ updated: true, version: policy.Version + 1 }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/admin/robot-operations') {
+      requireAdmin(db, req);
+      const timestamp = new Date();
+      const coverage = reconcileRobotOperations(db, timestamp);
+      const current = timestamp.toISOString();
+      const robots = db.prepare(`
+        SELECT p.CustomerId, p.DisplayName, p.Sex, p.Active, p.CityName,
+          s.RobotShiftScheduleId, s.PlannedStartTime, s.PlannedEndTime,
+          s.ShiftStatus, s.IsReserve
+        FROM CustomerProfile p
+        LEFT JOIN RobotShiftSchedule s
+          ON s.RobotCustomerId = p.CustomerId
+          AND s.ShiftStatus = 'Active'
+          AND s.PlannedStartTime <= ? AND s.PlannedEndTime > ?
+        WHERE p.Seed = 2
+        ORDER BY p.Sex, p.DisplayName
+      `).all(current, current);
+      const shifts = db.prepare(`
+        SELECT s.*, p.DisplayName
+        FROM RobotShiftSchedule s
+        JOIN CustomerProfile p ON p.CustomerId = s.RobotCustomerId
+        WHERE s.RobotCityCoverageId = ?
+          AND s.PlannedEndTime > ?
+        ORDER BY s.PlannedStartTime, s.SexSnapshot, p.DisplayName
+        LIMIT 20
+      `).all(coverage.RobotCityCoverageId, current);
+      const usageFor = (prefix) => db.prepare(`
+        SELECT COUNT(*) AS requests,
+          COALESCE(SUM(InputTokens), 0) AS inputTokens,
+          COALESCE(SUM(OutputTokens), 0) AS outputTokens,
+          COALESCE(SUM(EstimatedCost), 0) AS estimatedCost
+        FROM RobotAIUsage
+        WHERE UsageStatus = 'Accepted' AND substr(CreateTime, 1, ?) = ?
+      `).get(prefix.length, prefix);
+      const day = current.slice(0, 10);
+      const month = current.slice(0, 7);
+      return json(res, 200, envelope({
+        checkedAt: current,
+        coverage: {
+          robotCityCoverageId: coverage.RobotCityCoverageId,
+          countryCode: coverage.CountryCode,
+          state: coverage.StateId,
+          city: coverage.CityName,
+          timeZone: coverage.TimeZoneId,
+          status: coverage.CoverageStatus,
+          minimumMen: coverage.MinimumManProfiles,
+          minimumWomen: coverage.MinimumWomanProfiles,
+          requiredOnlineMen: coverage.RequiredOnlineMan,
+          requiredOnlineWomen: coverage.RequiredOnlineWoman
+        },
+        robots: robots.map((robot) => ({
+          customerId: robot.CustomerId,
+          displayName: robot.DisplayName,
+          sex: robot.Sex,
+          active: Boolean(robot.Active),
+          online: robot.ShiftStatus === 'Active',
+          shiftId: robot.RobotShiftScheduleId,
+          shiftStart: robot.PlannedStartTime,
+          shiftEnd: robot.PlannedEndTime,
+          reserve: Boolean(robot.IsReserve)
+        })),
+        shifts: shifts.map((shift) => ({
+          shiftId: shift.RobotShiftScheduleId,
+          robotCustomerId: shift.RobotCustomerId,
+          displayName: shift.DisplayName,
+          sex: shift.SexSnapshot,
+          businessDate: shift.BusinessDate,
+          startTime: shift.PlannedStartTime,
+          endTime: shift.PlannedEndTime,
+          status: shift.ShiftStatus,
+          reserve: Boolean(shift.IsReserve)
+        })),
+        ai: {
+          mode: getPolicy(db, 'robot_ai_mode', 'LocalOnly').value,
+          provider: 'OpenAI',
+          model: EXTERNAL_MODEL,
+          providerStatus: 'Simulated',
+          dailyBudget: Number(getPolicy(db, 'robot_ai_daily_budget_usd', '25').value),
+          monthlyBudget: Number(getPolicy(db, 'robot_ai_monthly_budget_usd', '500').value),
+          today: usageFor(day),
+          month: usageFor(month)
+        }
+      }, requestId));
+    }
+
+    if (req.method === 'PUT' && pathname === '/api/v1/admin/robot-ai-policy') {
+      const session = requireAdmin(db, req);
+      const body = await readJson(req);
+      const mode = String(body.mode || '');
+      const dailyBudget = Number(body.dailyBudget);
+      const monthlyBudget = Number(body.monthlyBudget);
+      if (!['LocalOnly', 'HybridExternalAllowed'].includes(mode)) {
+        throw new ApiError(422, 'ROBOT_AI_MODE_INVALID', 'Choose LocalOnly or HybridExternalAllowed.');
+      }
+      if (
+        !Number.isFinite(dailyBudget) || dailyBudget < 0 ||
+        !Number.isFinite(monthlyBudget) || monthlyBudget < dailyBudget
+      ) {
+        throw new ApiError(
+          422,
+          'ROBOT_AI_BUDGET_INVALID',
+          'Budgets must be non-negative and the monthly budget must cover the daily budget.'
+        );
+      }
+      const timestamp = now();
+      const updatePolicy = db.prepare(`
+        UPDATE PolicyDefinitions
+        SET PolicyValue = ?, Active = 1, Version = Version + 1,
+          UpdateTime = ?, UpdatedByEmployeeId = ?
+        WHERE PolicyKey = ?
+      `);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        updatePolicy.run(mode, timestamp, session.PrincipalId, 'robot_ai_mode');
+        updatePolicy.run(String(dailyBudget), timestamp, session.PrincipalId, 'robot_ai_daily_budget_usd');
+        updatePolicy.run(String(monthlyBudget), timestamp, session.PrincipalId, 'robot_ai_monthly_budget_usd');
+        audit(db, 'Employee', session.PrincipalId, 'RobotAIPolicyUpdated', 'Policy', null, {
+          mode,
+          dailyBudget,
+          monthlyBudget
+        });
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return json(res, 200, envelope({ mode, dailyBudget, monthlyBudget }, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (params = matchPath(pathname, '/api/v1/admin/robot-city-coverage/:coverageId/shifts/regenerate'))
+    ) {
+      const session = requireAdmin(db, req);
+      const body = await readJson(req);
+      const coverage = db.prepare(`
+        SELECT * FROM RobotCityCoverage WHERE RobotCityCoverageId = ?
+      `).get(params.coverageId);
+      if (!coverage) {
+        throw new ApiError(404, 'ROBOT_COVERAGE_NOT_FOUND', 'Robot city coverage was not found.');
+      }
+      const businessDate = String(body.businessDate || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/u.test(businessDate)) {
+        throw new ApiError(422, 'BUSINESS_DATE_REQUIRED', 'Provide a business date in YYYY-MM-DD format.');
+      }
+      const active = db.prepare(`
+        SELECT COUNT(*) AS value FROM RobotShiftSchedule
+        WHERE RobotCityCoverageId = ? AND BusinessDate = ?
+          AND ShiftStatus IN ('Active', 'Completed', 'Replaced')
+      `).get(coverage.RobotCityCoverageId, businessDate).value;
+      if (active) {
+        throw new ApiError(
+          409,
+          'ROBOT_SHIFT_DAY_STARTED',
+          'A started shift day cannot be regenerated.'
+        );
+      }
+      db.prepare(`
+        DELETE FROM RobotShiftSchedule
+        WHERE RobotCityCoverageId = ? AND BusinessDate = ?
+      `).run(coverage.RobotCityCoverageId, businessDate);
+      planDailyShifts(db, coverage, businessDate, new Date());
+      const count = db.prepare(`
+        SELECT COUNT(*) AS value FROM RobotShiftSchedule
+        WHERE RobotCityCoverageId = ? AND BusinessDate = ?
+      `).get(coverage.RobotCityCoverageId, businessDate).value;
+      audit(db, 'Employee', session.PrincipalId, 'RobotShiftsRegenerated', 'RobotCityCoverage', coverage.RobotCityCoverageId, {
+        businessDate,
+        shiftCount: count
+      });
+      return json(res, 200, envelope({ businessDate, shiftCount: count }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/admin/health') {
+      requireAdmin(db, req);
+      const coverage = reconcileRobotOperations(db);
+      const databaseCheck = db.prepare('SELECT 1 AS ok').get().ok === 1;
+      return json(res, 200, envelope({
+        checkedAt: now(),
+        services: [
+          { name: 'API', status: 'Healthy', detail: `Uptime ${Math.floor(process.uptime())} seconds` },
+          { name: 'Database', status: databaseCheck ? 'Healthy' : 'Unavailable', detail: 'SQLite prototype connection' },
+          { name: 'Payment provider', status: 'Simulated', detail: 'No real cards are charged' },
+          { name: 'Notification provider', status: 'Simulated', detail: 'Email and SMS delivery are logged' },
+          {
+            name: 'Robot service',
+            status: coverage.CoverageStatus === 'CoverageDegraded' ? 'Degraded' : 'Healthy',
+            detail: `${coverage.CityName} background engine · ${getPolicy(db, 'robot_ai_mode', 'LocalOnly').value}`
+          }
+        ]
+      }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/admin/dashboard') {
+      requireAdmin(db, req);
+      const timestamp = now();
+      const robotCoverage = reconcileRobotOperations(db, new Date(timestamp));
+      const businessDate = timestamp.slice(0, 10);
+      const customerCutoff = new Date(Date.now() - CUSTOMER_IDLE_MS).toISOString();
+      const metrics = {
+        realCustomers: {
+          total: db.prepare('SELECT COUNT(*) AS value FROM CustomerProfile WHERE Seed = 0 AND Active = 1').get().value,
+          online: db.prepare(`
+            SELECT COUNT(DISTINCT s.PrincipalId) AS value
+            FROM Sessions s
+            JOIN CustomerProfile c ON c.CustomerId = s.PrincipalId
+            WHERE s.PrincipalType = 'Customer' AND c.Seed = 0 AND c.Active = 1
+              AND s.ExpireTime > ? AND s.LastActivityTime > ?
+          `).get(timestamp, customerCutoff).value
+        },
+        seedCustomers: {
+          total: db.prepare('SELECT COUNT(*) AS value FROM CustomerProfile WHERE Seed = 1 AND Active = 1').get().value,
+          online: db.prepare(`
+            SELECT COUNT(DISTINCT es.CustomerId) AS value
+            FROM EmployeeSeed es
+            JOIN CustomerProfile c ON c.CustomerId = es.CustomerId
+            WHERE es.Active = 1 AND c.Active = 1 AND c.Seed = 1
+              AND (es.ActiveEndTime IS NULL OR es.ActiveEndTime > ?)
+          `).get(timestamp).value
+        },
+        robotCustomers: {
+          total: db.prepare('SELECT COUNT(*) AS value FROM CustomerProfile WHERE Seed = 2 AND Active = 1').get().value,
+          online: db.prepare(`
+            SELECT COUNT(DISTINCT RobotCustomerId) AS value
+            FROM RobotShiftSchedule
+            WHERE ShiftStatus = 'Active'
+              AND PlannedStartTime <= ? AND PlannedEndTime > ?
+          `).get(timestamp, timestamp).value
+        },
+        messagesToday: db.prepare(`
+          SELECT COUNT(*) AS value FROM ChatRecords WHERE substr(ChatTime, 1, 10) = ?
+        `).get(businessDate).value,
+        creditsConsumedToday: db.prepare(`
+          SELECT COALESCE(SUM(-CreditsChange), 0) AS value
+          FROM CreditLedger
+          WHERE CreditsChange < 0 AND substr(TransactionTime, 1, 10) = ?
+        `).get(businessDate).value,
+        revenueToday: db.prepare(`
+          SELECT COALESCE(SUM(Amount), 0) AS value FROM ChargeRecord
+          WHERE substr(ChargeTime, 1, 10) = ?
+            AND Status IN ('Succeeded', 'PrototypeSimulated')
+        `).get(businessDate).value
+      };
+      const operations = {
+        pendingPasswordResets: db.prepare(`
+          SELECT COUNT(*) AS value FROM PasswordResetRequests WHERE Status = 'Pending'
+        `).get().value,
+        pendingOutgoingPayments: db.prepare(`
+          SELECT COUNT(*) AS value FROM OutgoingPaymentRequests WHERE Status = 'Pending'
+        `).get().value,
+        activeEmployees: db.prepare(`
+          SELECT COUNT(*) AS value FROM Employees WHERE Active = 1
+        `).get().value,
+        openConversations: db.prepare('SELECT COUNT(*) AS value FROM Conversations').get().value,
+        waitingSeedConversations: db.prepare(`
+          SELECT COUNT(*) AS value
+          FROM Conversations c
+          JOIN CustomerProfile a ON a.CustomerId = c.CustomerAId
+          JOIN CustomerProfile b ON b.CustomerId = c.CustomerBId
+          WHERE (a.Seed = 1 OR b.Seed = 1)
+            AND (
+              SELECT m.SenderId FROM ChatRecords m
+              WHERE m.ConversationId = c.ConversationId
+              ORDER BY m.ChatTime DESC LIMIT 1
+            ) = CASE WHEN a.Seed = 0 THEN a.CustomerId ELSE b.CustomerId END
+        `).get().value
+      };
+      const auditRows = db.prepare(`
+        SELECT * FROM AuditLog ORDER BY CreateTime DESC LIMIT 20
+      `).all();
+      return json(res, 200, envelope({
+        metrics,
+        operations,
+        businessDate,
+        system: {
+          api: 'Healthy',
+          database: 'Healthy',
+          paymentProvider: 'Prototype simulation',
+          notificationProvider: 'Prototype simulation',
+          robotCoverage: robotCoverage.CoverageStatus,
+          robotAIMode: getPolicy(db, 'robot_ai_mode', 'LocalOnly').value,
+          policyVersion: db.prepare('SELECT MAX(Version) AS value FROM PolicyDefinitions').get().value || 1
+        },
+        recentAudit: auditRows.map((row) => ({
+          action: row.Action,
+          actorType: row.ActorType,
+          targetType: row.TargetType,
+          createTime: row.CreateTime
+        }))
+      }, requestId));
+    }
+
+    if (req.method === 'GET' && pathname === '/api/v1/ceo/dashboard') {
+      const session = requireCEO(db, req);
+      const timestamp = now();
+      const robotCoverage = reconcileRobotOperations(db, new Date(timestamp));
+      const year = timestamp.slice(0, 4);
+      const month = timestamp.slice(0, 7);
+      const day = timestamp.slice(0, 10);
+      const employeeCutoff = new Date(Date.now() - EMPLOYEE_IDLE_MS).toISOString();
+      const revenueFor = (prefix) => db.prepare(`
+        SELECT COALESCE(SUM(Amount), 0) AS value
+        FROM ChargeRecord
+        WHERE substr(ChargeTime, 1, ?) = ?
+          AND Status IN ('Succeeded', 'PrototypeSimulated')
+      `).get(prefix.length, prefix).value;
+      const expenseFor = (prefix) => db.prepare(`
+        SELECT COALESCE(SUM(Amount), 0) AS value
+        FROM OutgoingPaymentRequests
+        WHERE Status = 'Approved'
+          AND substr(DecisionTime, 1, ?) = ?
+      `).get(prefix.length, prefix).value;
+      const paymentRows = db.prepare(`
+        SELECT p.*, e.DisplayName AS RequestedByName
+        FROM OutgoingPaymentRequests p
+        JOIN Employees e ON e.EmployeeId = p.RequestedByEmployeeId
+        WHERE p.Status = 'Pending'
+        ORDER BY p.RequestTime ASC
+        LIMIT 20
+      `).all();
+      const databaseCheck = db.prepare('SELECT 1 AS ok').get().ok === 1;
+      return json(res, 200, envelope({
+        ceo: {
+          employeeId: session.PrincipalId,
+          role: session.Role
+        },
+        finance: {
+          revenue: {
+            year: revenueFor(year),
+            month: revenueFor(month),
+            day: revenueFor(day)
+          },
+          expense: {
+            year: expenseFor(year),
+            month: expenseFor(month),
+            day: expenseFor(day)
+          },
+          currencyCode: 'USD',
+          asOf: timestamp
+        },
+        online: {
+          realCustomers: db.prepare(`
+            SELECT COUNT(DISTINCT s.PrincipalId) AS value
+            FROM Sessions s
+            JOIN CustomerProfile c ON c.CustomerId = s.PrincipalId
+            WHERE s.PrincipalType = 'Customer' AND c.Seed = 0 AND c.Active = 1
+              AND s.ExpireTime > ?
+              AND s.LastActivityTime > ?
+          `).get(timestamp, new Date(Date.now() - CUSTOMER_IDLE_MS).toISOString()).value,
+          employees: db.prepare(`
+            SELECT COUNT(DISTINCT s.PrincipalId) AS value
+            FROM Sessions s
+            JOIN Employees e ON e.EmployeeId = s.PrincipalId
+            WHERE s.PrincipalType = 'Employee' AND e.Active = 1
+              AND s.ExpireTime > ?
+              AND s.LastActivityTime > ?
+          `).get(timestamp, employeeCutoff).value,
+          seedCustomers: db.prepare(`
+            SELECT COUNT(DISTINCT es.CustomerId) AS value
+            FROM EmployeeSeed es
+            JOIN CustomerProfile c ON c.CustomerId = es.CustomerId
+            WHERE es.Active = 1 AND c.Active = 1 AND c.Seed = 1
+              AND (es.ActiveEndTime IS NULL OR es.ActiveEndTime > ?)
+          `).get(timestamp).value,
+          robotCustomers: db.prepare(`
+            SELECT COUNT(DISTINCT RobotCustomerId) AS value
+            FROM RobotShiftSchedule
+            WHERE ShiftStatus = 'Active'
+              AND PlannedStartTime <= ? AND PlannedEndTime > ?
+          `).get(timestamp, timestamp).value
+        },
+        health: {
+          checkedAt: timestamp,
+          services: [
+            { name: 'API', status: 'Healthy', detail: `Uptime ${Math.floor(process.uptime())} seconds` },
+            { name: 'Database', status: databaseCheck ? 'Healthy' : 'Unavailable', detail: 'SQLite prototype connection' },
+            { name: 'Payment provider', status: 'Simulated', detail: 'No real cards or outgoing payments are processed' },
+            { name: 'Notification provider', status: 'Simulated', detail: 'Email and SMS delivery are logged' },
+            {
+              name: 'Robot service',
+              status: robotCoverage.CoverageStatus === 'CoverageDegraded' ? 'Degraded' : 'Healthy',
+              detail: `${robotCoverage.CityName} background engine · ${getPolicy(db, 'robot_ai_mode', 'LocalOnly').value}`
+            }
+          ]
+        },
+        approvals: paymentRows.map(normalizeOutgoingPayment)
+      }, requestId));
+    }
+
+    if (
+      req.method === 'POST' &&
+      (
+        (params = matchPath(pathname, '/api/v1/ceo/outgoing-payments/:requestId/approve')) ||
+        (params = matchPath(pathname, '/api/v1/ceo/outgoing-payments/:requestId/deny'))
+      )
+    ) {
+      const session = requireCEO(db, req);
+      const body = await readJson(req);
+      const approve = pathname.endsWith('/approve');
+      const status = approve ? 'Approved' : 'Denied';
+      const payment = db.prepare(`
+        SELECT * FROM OutgoingPaymentRequests
+        WHERE OutgoingPaymentRequestId = ?
+      `).get(params.requestId);
+      if (!payment) {
+        throw new ApiError(404, 'PAYMENT_REQUEST_NOT_FOUND', 'Outgoing payment request not found.');
+      }
+      if (payment.Status !== 'Pending') {
+        throw new ApiError(409, 'PAYMENT_REQUEST_ALREADY_DECIDED', 'This payment request was already decided.');
+      }
+      if (payment.RequestedByEmployeeId === session.PrincipalId) {
+        throw new ApiError(403, 'SEPARATION_OF_DUTIES_REQUIRED', 'The payment preparer cannot approve the same payment.');
+      }
+      const result = db.prepare(`
+        UPDATE OutgoingPaymentRequests
+        SET Status = ?, DecisionTime = ?, DecidedByEmployeeId = ?, DecisionRemark = ?
+        WHERE OutgoingPaymentRequestId = ? AND Status = 'Pending'
+      `).run(
+        status,
+        now(),
+        session.PrincipalId,
+        String(body.remark || '').trim() || null,
+        params.requestId
+      );
+      if (result.changes !== 1) {
+        throw new ApiError(409, 'PAYMENT_REQUEST_ALREADY_DECIDED', 'This payment request was already decided.');
+      }
+      audit(
+        db,
+        'Employee',
+        session.PrincipalId,
+        approve ? 'OutgoingPaymentApproved' : 'OutgoingPaymentDenied',
+        'OutgoingPaymentRequest',
+        params.requestId,
+        { amount: payment.Amount, payeeName: payment.PayeeName }
+      );
+      return json(res, 200, envelope({
+        outgoingPaymentRequestId: params.requestId,
+        status,
+        amount: payment.Amount,
+        currencyCode: payment.CurrencyCode,
+        decisionTime: now()
+      }, requestId));
+    }
+
+    throw new ApiError(404, 'ROUTE_NOT_FOUND', 'API route not found.');
+  }
+
+  function serveStatic(req, res, url) {
+    const pathname = url.pathname;
+    let filePath;
+    if (pathname === '/' || pathname === '/index.html') {
+      filePath = path.join(ROOT, 'Front', 'index.html');
+    } else if (pathname === '/employee' || pathname === '/employee.html') {
+      filePath = path.join(ROOT, 'Back', 'employee.html');
+    } else if (pathname === '/admin' || pathname === '/admin.html') {
+      filePath = path.join(ROOT, 'Back', 'admin.html');
+    } else if (pathname === '/ceo' || pathname === '/ceo.html') {
+      filePath = path.join(ROOT, 'Back', 'ceo.html');
+    } else if (pathname.startsWith('/assets/profiles/')) {
+      filePath = path.join(ROOT, 'Resource', 'profiles', path.basename(pathname));
+    } else if (pathname.startsWith('/front/')) {
+      filePath = path.join(ROOT, 'Front', pathname.slice('/front/'.length));
+    } else if (pathname.startsWith('/back/')) {
+      filePath = path.join(ROOT, 'Back', pathname.slice('/back/'.length));
+    } else {
+      return false;
+    }
+    const allowedRoots = [
+      path.join(ROOT, 'Front'),
+      path.join(ROOT, 'Back'),
+      path.join(ROOT, 'Resource', 'profiles')
+    ];
+    const resolved = path.resolve(filePath);
+    if (!allowedRoots.some((root) => resolved.startsWith(root)) || !fs.existsSync(resolved)) {
+      return false;
+    }
+    const extension = path.extname(resolved).toLowerCase();
+      const types = {
+        '.html': 'text/html; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.js': 'text/javascript; charset=utf-8',
+        '.svg': 'image/svg+xml',
+        '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg'
+    };
+    const stat = fs.statSync(resolved);
+    res.writeHead(200, {
+      'Content-Type': types[extension] || 'application/octet-stream',
+      'Content-Length': stat.size,
+      'Cache-Control': ['.html', '.js', '.css'].includes(extension) ? 'no-cache' : 'public, max-age=3600',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    fs.createReadStream(resolved).pipe(res);
+    return true;
+  }
+
+  async function handler(req, res) {
+    const requestId = `req_${randomToken(8)}`;
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      if (url.pathname.startsWith('/api/')) {
+        await handleApi(req, res, url, requestId);
+        return;
+      }
+      if (serveStatic(req, res, url)) return;
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Not found');
+    } catch (error) {
+      const safe =
+        error instanceof ApiError
+          ? error
+          : new ApiError(500, 'INTERNAL_ERROR', 'The server could not complete the request.');
+      if (!(error instanceof ApiError)) console.error(requestId, error);
+      if (!res.headersSent) json(res, safe.status, errorEnvelope(safe, requestId));
+      else res.destroy();
+    }
+  }
+
+  return {
+    db,
+    handler,
+    close() {
+      db.close();
+    }
+  };
+}
+
+module.exports = {
+  createApplication,
+  ApiError,
+  MESSAGE_COST,
+  MAX_MESSAGE_WORDS,
+  CREDIT_PACKAGES,
+  GIFTS
+};

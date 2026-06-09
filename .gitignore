@@ -1,0 +1,7 @@
+node_modules/
+CodeSource/Build/*.sqlite
+CodeSource/Build/*.sqlite-*
+CodeSource/Test/*.png
+ScreenCopy/*.mov
+*.dmg
+.DS_Store

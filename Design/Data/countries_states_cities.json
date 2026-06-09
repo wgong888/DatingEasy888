@@ -1,0 +1,669 @@
+{
+  "countries": [
+    {
+      "id": 1,
+      "name": "United States",
+      "code": "US",
+      "states": [
+        {
+          "id": "US-CA",
+          "name": "California",
+          "cities": ["Los Angeles", "San Francisco", "San Diego", "Sacramento", "Long Beach"]
+        },
+        {
+          "id": "US-TX",
+          "name": "Texas",
+          "cities": ["Houston", "Dallas", "San Antonio", "Austin", "Fort Worth"]
+        },
+        {
+          "id": "US-NY",
+          "name": "New York",
+          "cities": ["New York City", "Buffalo", "Rochester", "Yonkers", "Syracuse"]
+        },
+        {
+          "id": "US-FL",
+          "name": "Florida",
+          "cities": ["Miami", "Tampa", "Orlando", "Jacksonville", "Fort Lauderdale"]
+        },
+        {
+          "id": "US-IL",
+          "name": "Illinois",
+          "cities": ["Chicago", "Aurora", "Rockford", "Joliet", "Naperville"]
+        },
+        {
+          "id": "US-PA",
+          "name": "Pennsylvania",
+          "cities": ["Philadelphia", "Pittsburgh", "Allentown", "Erie", "Reading"]
+        },
+        {
+          "id": "US-OH",
+          "name": "Ohio",
+          "cities": ["Columbus", "Cleveland", "Cincinnati", "Toledo", "Akron"]
+        },
+        {
+          "id": "US-GA",
+          "name": "Georgia",
+          "cities": ["Atlanta", "Augusta", "Columbus", "Savannah", "Athens"]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "China",
+      "code": "CN",
+      "states": [
+        {
+          "id": "CN-BJ",
+          "name": "Beijing",
+          "cities": ["Beijing"]
+        },
+        {
+          "id": "CN-SH",
+          "name": "Shanghai",
+          "cities": ["Shanghai"]
+        },
+        {
+          "id": "CN-GD",
+          "name": "Guangdong",
+          "cities": ["Guangzhou", "Shenzhen", "Foshan", "Dongguan", "Zhuhai"]
+        },
+        {
+          "id": "CN-JS",
+          "name": "Jiangsu",
+          "cities": ["Nanjing", "Suzhou", "Wuxi", "Changzhou", "Nantong"]
+        },
+        {
+          "id": "CN-SC",
+          "name": "Sichuan",
+          "cities": ["Chengdu", "Chongqing", "Zigong", "Panzhihua", "Leshan"]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "United Kingdom",
+      "code": "GB",
+      "states": [
+        {
+          "id": "GB-ENG",
+          "name": "England",
+          "cities": ["London", "Manchester", "Birmingham", "Leeds", "Liverpool"]
+        },
+        {
+          "id": "GB-SCT",
+          "name": "Scotland",
+          "cities": ["Edinburgh", "Glasgow", "Dundee", "Aberdeen", "Stirling"]
+        },
+        {
+          "id": "GB-WLS",
+          "name": "Wales",
+          "cities": ["Cardiff", "Swansea", "Newport", "Coventry", "Wrexham"]
+        },
+        {
+          "id": "GB-NIR",
+          "name": "Northern Ireland",
+          "cities": ["Belfast", "Derry", "Lisburn", "Newry", "Armagh"]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Canada",
+      "code": "CA",
+      "states": [
+        {
+          "id": "CA-ON",
+          "name": "Ontario",
+          "cities": ["Toronto", "Ottawa", "Hamilton", "London", "Windsor"]
+        },
+        {
+          "id": "CA-QC",
+          "name": "Quebec",
+          "cities": ["Montreal", "Quebec City", "Gatineau", "Laval", "Longueuil"]
+        },
+        {
+          "id": "CA-BC",
+          "name": "British Columbia",
+          "cities": ["Vancouver", "Victoria", "Burnaby", "Surrey", "Kelowna"]
+        },
+        {
+          "id": "CA-AB",
+          "name": "Alberta",
+          "cities": ["Calgary", "Edmonton", "Red Deer", "Lethbridge", "Grande Prairie"]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Australia",
+      "code": "AU",
+      "states": [
+        {
+          "id": "AU-NSW",
+          "name": "New South Wales",
+          "cities": ["Sydney", "Newcastle", "Wollongong", "Central Coast", "Lismore"]
+        },
+        {
+          "id": "AU-VIC",
+          "name": "Victoria",
+          "cities": ["Melbourne", "Geelong", "Ballarat", "Bendigo", "Shepparton"]
+        },
+        {
+          "id": "AU-QLD",
+          "name": "Queensland",
+          "cities": ["Brisbane", "Gold Coast", "Cairns", "Townsville", "Mackay"]
+        },
+        {
+          "id": "AU-WA",
+          "name": "Western Australia",
+          "cities": ["Perth", "Fremantle", "Mandurah", "Bunbury", "Kalgoorlie"]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Germany",
+      "code": "DE",
+      "states": [
+        {
+          "id": "DE-BW",
+          "name": "Baden-Württemberg",
+          "cities": ["Stuttgart", "Mannheim", "Karlsruhe", "Freiburg", "Heidelberg"]
+        },
+        {
+          "id": "DE-BY",
+          "name": "Bavaria",
+          "cities": ["Munich", "Nuremberg", "Augsburg", "Regensburg", "Ingolstadt"]
+        },
+        {
+          "id": "DE-BE",
+          "name": "Berlin",
+          "cities": ["Berlin"]
+        },
+        {
+          "id": "DE-NW",
+          "name": "North Rhine-Westphalia",
+          "cities": ["Cologne", "Düsseldorf", "Dortmund", "Essen", "Duisburg"]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "France",
+      "code": "FR",
+      "states": [
+        {
+          "id": "FR-IDF",
+          "name": "Île-de-France",
+          "cities": ["Paris", "Versailles", "Boulogne", "Saint-Denis", "Nanterre"]
+        },
+        {
+          "id": "FR-ARA",
+          "name": "Auvergne-Rhône-Alpes",
+          "cities": ["Lyon", "Grenoble", "Saint-Étienne", "Annecy", "Villeurbanne"]
+        },
+        {
+          "id": "FR-PAC",
+          "name": "Provence-Alpes-Côte d'Azur",
+          "cities": ["Marseille", "Nice", "Toulon", "Cannes", "Antibes"]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Japan",
+      "code": "JP",
+      "states": [
+        {
+          "id": "JP-TYO",
+          "name": "Tokyo",
+          "cities": ["Tokyo"]
+        },
+        {
+          "id": "JP-OSA",
+          "name": "Osaka",
+          "cities": ["Osaka", "Kobe", "Sakai", "Higashiosaka", "Suita"]
+        },
+        {
+          "id": "JP-KYO",
+          "name": "Kyoto",
+          "cities": ["Kyoto", "Uji", "Kameoka", "Nantan", "Yawata"]
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "India",
+      "code": "IN",
+      "states": [
+        {
+          "id": "IN-MH",
+          "name": "Maharashtra",
+          "cities": ["Mumbai", "Pune", "Nagpur", "Nashik", "Aurangabad"]
+        },
+        {
+          "id": "IN-KA",
+          "name": "Karnataka",
+          "cities": ["Bangalore", "Mysore", "Hubli", "Belgaum", "Mangalore"]
+        },
+        {
+          "id": "IN-TN",
+          "name": "Tamil Nadu",
+          "cities": ["Chennai", "Coimbatore", "Madurai", "Trichy", "Salem"]
+        },
+        {
+          "id": "IN-DL",
+          "name": "Delhi",
+          "cities": ["New Delhi", "Delhi"]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Brazil",
+      "code": "BR",
+      "states": [
+        {
+          "id": "BR-SP",
+          "name": "São Paulo",
+          "cities": ["São Paulo", "Campinas", "Sorocaba", "Ribeirão Preto", "Santos"]
+        },
+        {
+          "id": "BR-RJ",
+          "name": "Rio de Janeiro",
+          "cities": ["Rio de Janeiro", "Niterói", "Duque de Caxias", "Campos dos Goytacazes"]
+        },
+        {
+          "id": "BR-MG",
+          "name": "Minas Gerais",
+          "cities": ["Belo Horizonte", "Uberlândia", "Contagem", "Juiz de Fora"]
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Mexico",
+      "code": "MX",
+      "states": [
+        {
+          "id": "MX-CDMX",
+          "name": "Mexico City",
+          "cities": ["Mexico City"]
+        },
+        {
+          "id": "MX-MEX",
+          "name": "State of Mexico",
+          "cities": ["Toluca", "Ecatepec", "Neza", "Tultitlán", "Huixquilucan"]
+        },
+        {
+          "id": "MX-JAL",
+          "name": "Jalisco",
+          "cities": ["Guadalajara", "Zapopan", "Tlaquepaque", "Tonalá", "Puerto Vallarta"]
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "South Korea",
+      "code": "KR",
+      "states": [
+        {
+          "id": "KR-SEOUL",
+          "name": "Seoul",
+          "cities": ["Seoul"]
+        },
+        {
+          "id": "KR-BUSAN",
+          "name": "Busan",
+          "cities": ["Busan"]
+        },
+        {
+          "id": "KR-INCHEON",
+          "name": "Incheon",
+          "cities": ["Incheon"]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Spain",
+      "code": "ES",
+      "states": [
+        {
+          "id": "ES-M",
+          "name": "Madrid",
+          "cities": ["Madrid"]
+        },
+        {
+          "id": "ES-B",
+          "name": "Barcelona",
+          "cities": ["Barcelona"]
+        },
+        {
+          "id": "ES-VC",
+          "name": "Valencia",
+          "cities": ["Valencia", "Alicante", "Castellón"]
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Italy",
+      "code": "IT",
+      "states": [
+        {
+          "id": "IT-LZ",
+          "name": "Lazio",
+          "cities": ["Rome"]
+        },
+        {
+          "id": "IT-LOM",
+          "name": "Lombardy",
+          "cities": ["Milan", "Bergamo", "Brescia", "Como", "Cremona"]
+        },
+        {
+          "id": "IT-CAM",
+          "name": "Campania",
+          "cities": ["Naples", "Salerno", "Caserta", "Avellino", "Benevento"]
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Netherlands",
+      "code": "NL",
+      "states": [
+        {
+          "id": "NL-NHO",
+          "name": "North Holland",
+          "cities": ["Amsterdam", "Alkmaar", "Heemskerk", "Hoorn", "Zaanstad"]
+        },
+        {
+          "id": "NL-ZHO",
+          "name": "South Holland",
+          "cities": ["Rotterdam", "The Hague", "Delft", "Leiden", "Dordrecht"]
+        },
+        {
+          "id": "NL-UDO",
+          "name": "Utrecht",
+          "cities": ["Utrecht", "Amersfoort", "Nieuwegein", "Zeist", "Leusden"]
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Sweden",
+      "code": "SE",
+      "states": [
+        {
+          "id": "SE-AB",
+          "name": "Stockholm",
+          "cities": ["Stockholm", "Sundbyberg", "Vallentuna", "Täby", "Vaxholm"]
+        },
+        {
+          "id": "SE-C",
+          "name": "Uppsala",
+          "cities": ["Uppsala", "Västerås", "Enköping", "Östhammar"]
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Switzerland",
+      "code": "CH",
+      "states": [
+        {
+          "id": "CH-ZH",
+          "name": "Zurich",
+          "cities": ["Zurich", "Winterthur", "Schlieren", "Dübendorf", "Illnau-Effretikon"]
+        },
+        {
+          "id": "CH-BE",
+          "name": "Bern",
+          "cities": ["Bern", "Thun", "Langenthal", "Burgdorf", "Bienne"]
+        },
+        {
+          "id": "CH-GE",
+          "name": "Geneva",
+          "cities": ["Geneva", "Vernier", "Meyrin", "Grand-Saconnex", "Carouge"]
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Belgium",
+      "code": "BE",
+      "states": [
+        {
+          "id": "BE-VLG",
+          "name": "Flanders",
+          "cities": ["Antwerp", "Ghent", "Bruges", "Louvain", "Mechelen"]
+        },
+        {
+          "id": "BE-WAL",
+          "name": "Wallonia",
+          "cities": ["Liège", "Charleroi", "Namur", "Mons", "Tournai"]
+        },
+        {
+          "id": "BE-BXL",
+          "name": "Brussels",
+          "cities": ["Brussels"]
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Austria",
+      "code": "AT",
+      "states": [
+        {
+          "id": "AT-9",
+          "name": "Vienna",
+          "cities": ["Vienna"]
+        },
+        {
+          "id": "AT-5",
+          "name": "Salzburg",
+          "cities": ["Salzburg", "Hallein", "Saalfelden", "Zell am See"]
+        },
+        {
+          "id": "AT-1",
+          "name": "Lower Austria",
+          "cities": ["St. Pölten", "Waidhofen", "Krems", "Ternitz", "Wiener Neustadt"]
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Poland",
+      "code": "PL",
+      "states": [
+        {
+          "id": "PL-MZ",
+          "name": "Masovian Voivodeship",
+          "cities": ["Warsaw", "Radom", "Ostrołęka", "Siedlce", "Ostrołęka"]
+        },
+        {
+          "id": "PL-MA",
+          "name": "Lesser Poland Voivodeship",
+          "cities": ["Kraków", "Tarnów", "Wieliczka", "Sucha Beskidzka"]
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Portugal",
+      "code": "PT",
+      "states": [
+        {
+          "id": "PT-11",
+          "name": "Lisbon District",
+          "cities": ["Lisbon", "Amadora", "Cascais", "Sintra", "Óbidos"]
+        },
+        {
+          "id": "PT-16",
+          "name": "Porto District",
+          "cities": ["Porto", "Vila Nova de Gaia", "Matosinhos", "Maia", "Espinho"]
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Greece",
+      "code": "GR",
+      "states": [
+        {
+          "id": "GR-A",
+          "name": "Attika",
+          "cities": ["Athens", "Piraeus", "Marousi", "Glyfada", "Voula"]
+        },
+        {
+          "id": "GR-B",
+          "name": "Central Macedonia",
+          "cities": ["Thessaloniki", "Kalamaria", "Polichni", "Neapoli", "Thermaikos"]
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Czech Republic",
+      "code": "CZ",
+      "states": [
+        {
+          "id": "CZ-10",
+          "name": "Prague",
+          "cities": ["Prague"]
+        },
+        {
+          "id": "CZ-20",
+          "name": "Central Bohemian Region",
+          "cities": ["Kladno", "Kolin", "Mělník", "Benešov", "Rakovník"]
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Hungary",
+      "code": "HU",
+      "states": [
+        {
+          "id": "HU-BU",
+          "name": "Budapest",
+          "cities": ["Budapest"]
+        },
+        {
+          "id": "HU-PE",
+          "name": "Pest County",
+          "cities": ["Dunakeszi", "Erd", "Gödöllő", "Nagykőzárd", "Monor"]
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Romania",
+      "code": "RO",
+      "states": [
+        {
+          "id": "RO-B",
+          "name": "Bucharest",
+          "cities": ["Bucharest"]
+        },
+        {
+          "id": "RO-CJ",
+          "name": "Cluj County",
+          "cities": ["Cluj-Napoca", "Turda", "Gherla", "Jibou", "Câmpia Turzii"]
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Thailand",
+      "code": "TH",
+      "states": [
+        {
+          "id": "TH-10",
+          "name": "Bangkok",
+          "cities": ["Bangkok"]
+        },
+        {
+          "id": "TH-40",
+          "name": "Chiang Mai",
+          "cities": ["Chiang Mai", "San Sai", "Hang Dong", "Mueang Chiang Mai"]
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Philippines",
+      "code": "PH",
+      "states": [
+        {
+          "id": "PH-00",
+          "name": "Metro Manila",
+          "cities": ["Manila", "Quezon City", "Caloocan", "Makati", "Pasig"]
+        },
+        {
+          "id": "PH-01",
+          "name": "Cebu",
+          "cities": ["Cebu City", "Mandaue", "Lapu-Lapu", "Talisay", "Danao"]
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Indonesia",
+      "code": "ID",
+      "states": [
+        {
+          "id": "ID-JK",
+          "name": "Jakarta",
+          "cities": ["Jakarta"]
+        },
+        {
+          "id": "ID-JW",
+          "name": "West Java",
+          "cities": ["Bandung", "Bekasi", "Depok", "Bogor", "Cirebon"]
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Malaysia",
+      "code": "MY",
+      "states": [
+        {
+          "id": "MY-KL",
+          "name": "Kuala Lumpur",
+          "cities": ["Kuala Lumpur"]
+        },
+        {
+          "id": "MY-SG",
+          "name": "Selangor",
+          "cities": ["Shah Alam", "Petaling Jaya", "Subang Jaya", "Klang", "Kajang"]
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "name": "New Zealand",
+      "code": "NZ",
+      "states": [
+        {
+          "id": "NZ-AUK",
+          "name": "Auckland",
+          "cities": ["Auckland"]
+        },
+        {
+          "id": "NZ-WKO",
+          "name": "Waikato",
+          "cities": ["Hamilton", "Cambridge", "Thames", "Matamata", "Tirau"]
+        },
+        {
+          "id": "NZ-WGN",
+          "name": "Wellington",
+          "cities": ["Wellington", "Lower Hutt", "Upper Hutt", "Porirua", "Masterton"]
+        }
+      ]
+    }
+  ]
+}

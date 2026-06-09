@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DatingEasy888 CEO</title>
+  <link rel="stylesheet" href="/back/staff.css">
+  <script src="/back/ceo.js" defer></script>
+</head>
+<body>
+  <main id="login-view" class="staff-login">
+    <section class="login-panel">
+      <div class="brand"><span class="brand-mark">D</span>DatingEasy888 Executive</div>
+      <h1>CEO sign in</h1>
+      <p>Review company performance, live operations, system health, and outgoing-payment approvals.</p>
+      <form id="ceo-login-form">
+        <label>Work email<input name="email" type="email" value="ceo@datingeasy.test" required></label>
+        <label>Password<input name="password" type="password" value="Demo123!" required></label>
+        <button class="primary" type="submit">Sign in to CEO dashboard</button>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="workspace-view" class="ceo-shell hidden">
+    <header class="staff-header">
+      <div class="brand"><span class="brand-mark">D</span>CEO Dashboard</div>
+      <div class="header-meta">
+        <span class="status">Executive access</span>
+        <span id="ceo-name"></span>
+        <button id="refresh-ceo" class="secondary" type="button">Refresh</button>
+        <button id="logout" class="secondary" type="button">Log out</button>
+      </div>
+    </header>
+    <main class="ceo-main">
+      <div id="ceo-status" class="admin-status" role="status"></div>
+      <div class="ceo-panels">
+        <section id="panel-a" class="ceo-panel finance-panel">
+          <header class="ceo-panel-heading">
+            <div><span>Panel A</span><h2>Revenue and expense</h2></div>
+            <time id="finance-as-of"></time>
+          </header>
+          <div id="finance-grid" class="ceo-finance-grid"></div>
+        </section>
+
+        <section id="panel-b" class="ceo-panel">
+          <header class="ceo-panel-heading">
+            <div><span>Panel B</span><h2>Current online presence</h2></div>
+            <span>Live sessions and active virtual profiles</span>
+          </header>
+          <div id="online-grid" class="ceo-online-grid"></div>
+        </section>
+
+        <section id="panel-c" class="ceo-panel">
+          <header class="ceo-panel-heading">
+            <div><span>Panel C</span><h2>System health</h2></div>
+            <time id="health-checked"></time>
+          </header>
+          <div id="ceo-health-list" class="ceo-health-list"></div>
+        </section>
+
+        <section id="panel-d" class="ceo-panel approval-panel">
+          <header class="ceo-panel-heading">
+            <div><span>Panel D</span><h2>Approval waiting list</h2></div>
+            <strong id="approval-count">0 waiting</strong>
+          </header>
+          <div class="ceo-approval-workspace">
+            <div id="approval-list" class="ceo-approval-list"></div>
+            <aside id="approval-detail" class="approval-detail">
+              <div class="approval-empty">
+                <strong>Select a payment request</strong>
+                <span>Review the payee, category, amount, description, and preparer before deciding.</span>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DatingEasy888 Employee Workspace</title>
+  <link rel="stylesheet" href="/back/staff.css">
+  <script src="/back/employee.js" defer></script>
+</head>
+<body>
+  <main id="login-view" class="staff-login">
+    <section class="login-panel">
+      <div class="brand"><span class="brand-mark">D</span>DatingEasy888 Operations</div>
+      <h1>Employee sign in</h1>
+      <p>Prototype access uses the configured local work account. Production will require email or text verification.</p>
+      <form id="staff-login-form">
+        <label>Work email<input name="email" type="email" value="operator@datingeasy.test" required></label>
+        <label>Password<input name="password" type="password" value="Demo123!" required></label>
+        <button class="primary" type="submit">Sign in to workspace</button>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="workspace-view" class="staff-shell employee-shell hidden">
+    <header class="staff-header">
+      <div class="brand"><span class="brand-mark">D</span>Employee Workspace</div>
+      <div class="header-meta"><span class="status">Online</span><strong id="employee-name"></strong><button id="logout" class="secondary" type="button">Log out</button></div>
+    </header>
+    <main class="staff-main employee-main">
+      <div class="page-title">
+        <div><h1>Live conversation desk</h1><p>Select one seed, one real customer, then respond in the main chat.</p></div>
+        <div class="capacity"><span id="seed-capacity"></span><span id="chat-capacity"></span></div>
+      </div>
+      <p id="workspace-status" class="workspace-status" role="status"></p>
+      <div id="employee-workspace" class="employee-workspace">
+        <section id="panel-a" class="work-panel panel-a" aria-label="Panel A active seed profiles">
+          <div class="panel-heading"><div><span>Panel A</span><h2>Active seeds</h2></div><span>Max 20</span></div>
+          <div id="seed-list" class="seed-list"></div>
+        </section>
+        <section id="panel-b" class="work-panel panel-b" aria-label="Panel B real customers">
+          <div class="panel-heading"><div><span>Panel B</span><h2>Real customers</h2></div><span id="customer-count">0</span></div>
+          <div id="customer-list" class="customer-list"></div>
+        </section>
+        <section id="panel-c" class="work-panel panel-c" aria-label="Panel C main chat">
+          <div id="main-chat" class="main-chat"></div>
+        </section>
+        <section id="panel-d" class="work-panel panel-d" aria-label="Panel D prepared text files">
+          <div class="panel-heading"><div><span>Panel D</span><h2>Prepared text</h2></div><span>Files</span></div>
+          <div id="prepared-files" class="prepared-files"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

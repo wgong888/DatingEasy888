@@ -1,0 +1,261 @@
+{
+  "marital_statuses": [
+    { "id": 1, "value": "single", "label": "Single" },
+    { "id": 2, "value": "married", "label": "Married" },
+    { "id": 3, "value": "divorced", "label": "Divorced" },
+    { "id": 4, "value": "widowed", "label": "Widowed" },
+    { "id": 5, "value": "separated", "label": "Separated" },
+    { "id": 6, "value": "in_relationship", "label": "In a relationship" }
+  ],
+
+  "english_levels": [
+    { "id": 1, "value": "beginner", "label": "Beginner" },
+    { "id": 2, "value": "intermediate", "label": "Intermediate" },
+    { "id": 3, "value": "advanced", "label": "Advanced" },
+    { "id": 4, "value": "fluent", "label": "Fluent" },
+    { "id": 5, "value": "native", "label": "Native speaker" }
+  ],
+
+  "fields_of_work": [
+    { "id": 1, "value": "engineering", "label": "Engineering" },
+    { "id": 2, "value": "finance", "label": "Finance" },
+    { "id": 3, "value": "healthcare", "label": "Healthcare" },
+    { "id": 4, "value": "education", "label": "Education" },
+    { "id": 5, "value": "technology", "label": "Technology/IT" },
+    { "id": 6, "value": "business", "label": "Business/Management" },
+    { "id": 7, "value": "sales", "label": "Sales" },
+    { "id": 8, "value": "marketing", "label": "Marketing" },
+    { "id": 9, "value": "law", "label": "Law" },
+    { "id": 10, "value": "government", "label": "Government" },
+    { "id": 11, "value": "arts", "label": "Arts/Entertainment" },
+    { "id": 12, "value": "media", "label": "Media/Journalism" },
+    { "id": 13, "value": "hospitality", "label": "Hospitality/Tourism" },
+    { "id": 14, "value": "construction", "label": "Construction" },
+    { "id": 15, "value": "manufacturing", "label": "Manufacturing" },
+    { "id": 16, "value": "transportation", "label": "Transportation/Logistics" },
+    { "id": 17, "value": "agriculture", "label": "Agriculture" },
+    { "id": 18, "value": "real_estate", "label": "Real Estate" },
+    { "id": 19, "value": "nonprofit", "label": "Non-profit" },
+    { "id": 20, "value": "self_employed", "label": "Self-employed" },
+    { "id": 21, "value": "retired", "label": "Retired" },
+    { "id": 22, "value": "student", "label": "Student" },
+    { "id": 23, "value": "homemaker", "label": "Homemaker" },
+    { "id": 24, "value": "other", "label": "Other" }
+  ],
+
+  "personality_traits": [
+    { "id": 1, "value": "honest", "label": "Honest" },
+    { "id": 2, "value": "cheerful", "label": "Cheerful" },
+    { "id": 3, "value": "moody", "label": "Moody" },
+    { "id": 4, "value": "self_confident", "label": "Self-confident" },
+    { "id": 5, "value": "optimistic", "label": "Optimistic" },
+    { "id": 6, "value": "calm", "label": "Calm" },
+    { "id": 7, "value": "grateful", "label": "Grateful" },
+    { "id": 8, "value": "thoughtful", "label": "Thoughtful" },
+    { "id": 9, "value": "kind", "label": "Kind" },
+    { "id": 10, "value": "humorous", "label": "Humorous" },
+    { "id": 11, "value": "ambitious", "label": "Ambitious" },
+    { "id": 12, "value": "creative", "label": "Creative" },
+    { "id": 13, "value": "intelligent", "label": "Intelligent" },
+    { "id": 14, "value": "sensitive", "label": "Sensitive" },
+    { "id": 15, "value": "adventurous", "label": "Adventurous" },
+    { "id": 16, "value": "independent", "label": "Independent" },
+    { "id": 17, "value": "loyal", "label": "Loyal" },
+    { "id": 18, "value": "romantic", "label": "Romantic" },
+    { "id": 19, "value": "spontaneous", "label": "Spontaneous" },
+    { "id": 20, "value": "pragmatic", "label": "Pragmatic" }
+  ],
+
+  "interests": [
+    { "id": 1, "value": "traveling", "label": "Traveling" },
+    { "id": 2, "value": "football", "label": "Football" },
+    { "id": 3, "value": "watching_tv", "label": "Watching TV" },
+    { "id": 4, "value": "baseball", "label": "Baseball" },
+    { "id": 5, "value": "music", "label": "Music" },
+    { "id": 6, "value": "cars", "label": "Cars" },
+    { "id": 7, "value": "basketball", "label": "Basketball" },
+    { "id": 8, "value": "cooking", "label": "Cooking" },
+    { "id": 9, "value": "pets", "label": "Pets" },
+    { "id": 10, "value": "working_out", "label": "Working out" },
+    { "id": 11, "value": "computer_games", "label": "Computer games" },
+    { "id": 12, "value": "dancing", "label": "Dancing" },
+    { "id": 13, "value": "arts", "label": "Arts" },
+    { "id": 14, "value": "gardening", "label": "Gardening" },
+    { "id": 15, "value": "fishing", "label": "Fishing" },
+    { "id": 16, "value": "hunting", "label": "Hunting" },
+    { "id": 17, "value": "hockey", "label": "Hockey" },
+    { "id": 18, "value": "reading", "label": "Reading" },
+    { "id": 19, "value": "boxing", "label": "Boxing" },
+    { "id": 20, "value": "fashion", "label": "Fashion" },
+    { "id": 21, "value": "nature", "label": "Nature" },
+    { "id": 22, "value": "soccer", "label": "Soccer" },
+    { "id": 23, "value": "biking", "label": "Biking" },
+    { "id": 24, "value": "tennis", "label": "Tennis" },
+    { "id": 25, "value": "astrology", "label": "Astrology" },
+    { "id": 26, "value": "golf", "label": "Golf" },
+    { "id": 27, "value": "photography", "label": "Photography" },
+    { "id": 28, "value": "fitness", "label": "Fitness" },
+    { "id": 29, "value": "yoga", "label": "Yoga" },
+    { "id": 30, "value": "volunteering", "label": "Volunteering" },
+    { "id": 31, "value": "shopping", "label": "Shopping" },
+    { "id": 32, "value": "other", "label": "Other" }
+  ],
+
+  "movie_genres": [
+    { "id": 1, "value": "documentary", "label": "Documentary" },
+    { "id": 2, "value": "animation", "label": "Animation" },
+    { "id": 3, "value": "comedy", "label": "Comedy" },
+    { "id": 4, "value": "adventure", "label": "Adventure" },
+    { "id": 5, "value": "horror", "label": "Horror" },
+    { "id": 6, "value": "action", "label": "Action" },
+    { "id": 7, "value": "thriller", "label": "Thriller" },
+    { "id": 8, "value": "drama", "label": "Drama" },
+    { "id": 9, "value": "romance", "label": "Romance" },
+    { "id": 10, "value": "western", "label": "Western" },
+    { "id": 11, "value": "science_fiction", "label": "Science fiction" },
+    { "id": 12, "value": "crime_film", "label": "Crime film" },
+    { "id": 13, "value": "historical_drama", "label": "Historical drama" },
+    { "id": 14, "value": "fantasy", "label": "Fantasy" },
+    { "id": 15, "value": "dont_like_movies", "label": "Don't like movies" }
+  ],
+
+  "music_genres": [
+    { "id": 1, "value": "rock", "label": "Rock" },
+    { "id": 2, "value": "pop", "label": "Pop" },
+    { "id": 3, "value": "electronic", "label": "Electronic" },
+    { "id": 4, "value": "classical", "label": "Classical music" },
+    { "id": 5, "value": "jazz", "label": "Jazz" },
+    { "id": 6, "value": "hip_hop", "label": "Hip-hop" },
+    { "id": 7, "value": "melomaniac", "label": "Melomaniac" },
+    { "id": 8, "value": "country", "label": "Country" },
+    { "id": 9, "value": "folk", "label": "Folk" },
+    { "id": 10, "value": "dont_like_music", "label": "Don't like music" },
+    { "id": 11, "value": "blues", "label": "Blues" },
+    { "id": 12, "value": "reggae", "label": "Reggae" },
+    { "id": 13, "value": "latin", "label": "Latin" },
+    { "id": 14, "value": "r_and_b", "label": "R&B" },
+    { "id": 15, "value": "indie", "label": "Indie" }
+  ],
+
+  "dating_goals": [
+    { "id": 1, "value": "chatting", "label": "Chatting" },
+    { "id": 2, "value": "finding_friend", "label": "Finding a friend" },
+    { "id": 3, "value": "having_fun", "label": "Having fun" },
+    { "id": 4, "value": "get_attention", "label": "Get attention" },
+    { "id": 5, "value": "bored", "label": "I am bored" },
+    { "id": 6, "value": "long_term", "label": "Long-term relationship" },
+    { "id": 7, "value": "short_term", "label": "Short-term relationship" },
+    { "id": 8, "value": "marriage", "label": "Marriage" },
+    { "id": 9, "value": "other", "label": "Other" }
+  ],
+
+  "gender_looking_for": [
+    { "id": 1, "value": "man_for_woman", "label": "I am a man looking for a woman" },
+    { "id": 2, "value": "woman_for_man", "label": "I am a woman looking for a man" },
+    { "id": 3, "value": "man_for_man", "label": "I am a man looking for a man" },
+    { "id": 4, "value": "woman_for_woman", "label": "I am a woman looking for a woman" },
+    { "id": 5, "value": "non_binary", "label": "Non-binary looking for anyone" }
+  ],
+
+  "personality_types": [
+    { "id": 1, "value": "career_chaser", "label": "Career chaser" },
+    { "id": 2, "value": "family_oriented", "label": "Family-oriented" },
+    { "id": 3, "value": "adventurer", "label": "Adventurer" },
+    { "id": 4, "value": "homebody", "label": "Homebody" },
+    { "id": 5, "value": "socialite", "label": "Socialite" },
+    { "id": 6, "value": "introvert", "label": "Introvert" },
+    { "id": 7, "value": "extrovert", "label": "Extrovert" },
+    { "id": 8, "value": "spiritual", "label": "Spiritual" },
+    { "id": 9, "value": "artistic", "label": "Artistic" },
+    { "id": 10, "value": "athlete", "label": "Athlete" }
+  ],
+
+  "languages": [
+    { "id": 1, "code": "en", "label": "English" },
+    { "id": 2, "code": "zh", "label": "Mandarin" },
+    { "id": 3, "code": "es", "label": "Spanish" },
+    { "id": 4, "code": "fr", "label": "French" },
+    { "id": 5, "code": "de", "label": "German" },
+    { "id": 6, "code": "ja", "label": "Japanese" },
+    { "id": 7, "code": "ko", "label": "Korean" },
+    { "id": 8, "code": "pt", "label": "Portuguese" },
+    { "id": 9, "code": "ru", "label": "Russian" },
+    { "id": 10, "code": "it", "label": "Italian" },
+    { "id": 11, "code": "nl", "label": "Dutch" },
+    { "id": 12, "code": "pl", "label": "Polish" },
+    { "id": 13, "code": "tr", "label": "Turkish" },
+    { "id": 14, "code": "ar", "label": "Arabic" },
+    { "id": 15, "code": "hi", "label": "Hindi" },
+    { "id": 16, "code": "th", "label": "Thai" },
+    { "id": 17, "code": "vi", "label": "Vietnamese" },
+    { "id": 18, "code": "id", "label": "Indonesian" },
+    { "id": 19, "code": "tl", "label": "Tagalog" },
+    { "id": 20, "code": "uk", "label": "Ukrainian" }
+  ],
+
+  "credit_packages": [
+    {
+      "id": 1,
+      "credits": 100,
+      "price_usd": 10,
+      "discount_percentage": 0,
+      "badge": null,
+      "description": "Starter package"
+    },
+    {
+      "id": 2,
+      "credits": 220,
+      "price_usd": 20,
+      "discount_percentage": 9.09,
+      "badge": null,
+      "description": "Includes 20 bonus credits"
+    },
+    {
+      "id": 3,
+      "credits": 360,
+      "price_usd": 30,
+      "discount_percentage": 16.67,
+      "badge": null,
+      "description": "Includes 60 bonus credits"
+    },
+    {
+      "id": 4,
+      "credits": 700,
+      "price_usd": 50,
+      "discount_percentage": 28.57,
+      "badge": "Popular",
+      "description": "Includes 200 bonus credits"
+    },
+    {
+      "id": 5,
+      "credits": 1500,
+      "price_usd": 100,
+      "discount_percentage": 33.33,
+      "badge": "Best Value",
+      "description": "Includes 500 bonus credits"
+    }
+  ],
+
+  "age_ranges": {
+    "min": 18,
+    "max": 100,
+    "default_from": 25,
+    "default_to": 40
+  },
+
+  "message_gifts": [
+    { "id": 1, "emoji": "🌹", "name": "Flower", "cost_credits": 100, "recipient_credits": 80 },
+    { "id": 2, "emoji": "🥈", "name": "Silver", "cost_credits": 200, "recipient_credits": 160 },
+    { "id": 3, "emoji": "🥇", "name": "Gold", "cost_credits": 500, "recipient_credits": 400 },
+    { "id": 4, "emoji": "💎", "name": "Diamond", "cost_credits": 1000, "recipient_credits": 800 },
+    { "id": 5, "emoji": "🚀", "name": "Big Rocket", "cost_credits": 10000, "recipient_credits": 8000 }
+  ],
+
+  "verification_badges": [
+    { "id": 1, "type": "email_verified", "label": "Email verified" },
+    { "id": 2, "type": "phone_verified", "label": "Phone verified" },
+    { "id": 3, "type": "id_verified", "label": "ID verified" },
+    { "id": 4, "type": "premium_member", "label": "Premium member" },
+    { "id": 5, "type": "trusted_user", "label": "Trusted user" }
+  ]
+}
