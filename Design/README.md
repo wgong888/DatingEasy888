@@ -4,6 +4,8 @@
 
 ```
 Design/
+├── Business/                          # Business model and go-to-market
+│   └── BUSINESS_PLAN.md              # Strategy, economics, milestones, and risks
 ├── Frontend/                          # Frontend UI Design
 │   ├── FRONTEND_UI_DESIGN_PLAN.md    # Original 21 screens plus added-screen index
 │   ├── ADDITIONAL_CUSTOMER_SCREENS.md # Five added customer screens
@@ -65,6 +67,19 @@ Design/
 ---
 
 ## 📚 Document Guide
+
+### **Business/BUSINESS_PLAN.md**
+- Business strategy and positioning
+- Initial customer and market hypotheses
+- Revenue model and conservative financial scenarios
+- Go-to-market stages, KPIs, risks, and launch gates
+
+**Use this for commercial planning and validation decisions.**
+
+`Product/MARKET_ANALYSIS.md` contains the supporting market, competitor,
+customer, app-store, advertising, payment, and enforcement research.
+
+---
 
 ### **1. plan.md** (Start Here!)
 - 📋 Overall project phases (1-9)
