@@ -3,7 +3,15 @@
 ## Executive Summary
 This is a comprehensive frontend design specification based on actual UI mockups. The application is a dating/social chat platform (Best Dates / Horizon Singles) with a responsive design for desktop and mobile.
 
-The customer-facing interface must remain simple, compact, robust, and easy to use. It must work well on both desktop computers and mobile phones.
+The customer-facing interface must remain simple, compact, robust, and easy to
+use. It is designed mobile-first because the phone is the primary customer
+device. Every customer workflow must work at supported phone widths before
+desktop enhancements are accepted.
+
+Mobile-first does not mean a reduced customer product. Registration, profile,
+discovery, favorites, chat, gifts, credits, safety, and account management
+must remain complete on phones. Desktop may use additional space, but it must
+not become the only usable path for a customer action.
 
 ---
 

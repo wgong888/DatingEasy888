@@ -156,6 +156,8 @@ updates and incoming notifications do not reset this timer.
 ## Frontend And Backend UI Direction
 
 ### Customer Frontend
+- Mobile-first: phone interaction, layout, performance, and readability are
+  the primary design and acceptance target.
 - Simple and compact
 - Robust and reliable
 - Easy to use without training
@@ -167,7 +169,24 @@ updates and incoming notifications do not reset this timer.
 - Best-effort support for other Unix-like systems with a standards-compliant current browser
 - Internet Explorer 11 is not supported because it is retired and lacks required modern security and web capabilities
 - Touch-friendly on mobile
+- Primary actions must be reachable and comfortable for one-handed phone use.
+- Registration, profile, discovery, favorites, chat, gifts, credits, safety,
+  and account management must not require a desktop-only step.
 - Avoid excessive controls, dense administration tools, and unnecessary decoration
+
+### Customer Mobile Applications
+- Dedicated iOS and Android customer applications are planned after the Arfa
+  review.
+- The apps provide the same authoritative customer accounts, profiles,
+  conversations, balances, purchases, gifts, safety state, and policies as the
+  customer web experience through shared versioned APIs.
+- Mobile apps must not duplicate credit, payment, chat, robot, moderation, or
+  eligibility rules in a way that can diverge from the Web Service.
+- Native-app technology, store-account ownership, push notifications,
+  purchases, release cadence, and minimum OS versions will be approved during
+  the post-Arfa architecture review.
+- Employee, administrator, CEO, and robot workspaces are not included in the
+  customer mobile applications.
 
 ### Employee/Admin Backend
 - Designed only for large desktop screens

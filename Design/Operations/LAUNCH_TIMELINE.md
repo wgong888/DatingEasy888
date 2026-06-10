@@ -39,7 +39,7 @@ Exit gate:
 Goal: review the whole prototype before Beta work begins.
 
 Review:
-- Customer desktop and mobile workflows
+- Customer mobile-first workflows, followed by desktop enhancement checks
 - Employee four-panel work process
 - Administrator operations and policy maintenance
 - CEO overview and payment approval
@@ -63,6 +63,12 @@ Goal: convert the accepted prototype into a cloud-deployable, supportable
 product candidate.
 
 Required Beta engineering:
+- Start the dedicated iOS and Android customer-app track after the Arfa review,
+  using the same versioned customer APIs and authoritative business rules as
+  the web customer experience.
+- Treat the mobile web experience as the baseline customer interaction model;
+  refine native navigation, notifications, media, accessibility, and
+  store-specific behavior without forking product policy.
 - Implement or approve the production C#/ASP.NET Core Web Service.
 - Implement versioned SQL Server schema and migrations.
 - Replace prototype-only persistence and test shortcuts.

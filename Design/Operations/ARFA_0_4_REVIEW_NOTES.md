@@ -38,6 +38,14 @@ The following are not defects in the local prototype and remain Beta work:
   monitoring, load testing, and failure-injection matrix
 - Cloud infrastructure, CI/CD, monitoring, backup/restore, and deployment
 
+## Confirmed Next Customer Track
+- Customer experience remains mobile-first; phone usability is the primary
+  acceptance target for future web changes.
+- After Arfa review, begin dedicated iOS and Android customer applications
+  backed by the same versioned Web Service and product policies.
+- Employee, administrator, CEO, and headless robot operations are not part of
+  the customer mobile apps.
+
 ## Launch Blockers
 Arfa must not be opened to the public. Before a closed real-customer test, the
 company-operated and AI-generated profile presentation, paid interaction flow,

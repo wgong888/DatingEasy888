@@ -148,6 +148,10 @@ This file records important decisions so we do not lose context as the design gr
 - Use Horizon Singles and Best Dates as visual references.
 - DatingEasy888 should be between the two: less shiny/intense than Horizon Singles and less plain than Best Dates.
 - The desired UI feeling is warm, polished, readable, trustworthy, adult, and modern.
+- Customer Frontend is mobile-first because customers are expected to use
+  phones as their primary and most frequent access device.
+- Every customer workflow is designed and accepted at supported phone widths
+  first, then enhanced for tablet and desktop without removing core features.
 - Customer Frontend is simple, compact, robust, and easy to use on desktop and mobile phones.
 - Customer Frontend supports Windows 10 22H2 as a time-limited legacy target and fully supports Windows 11.
 - Customer Frontend supports Mac computers introduced in 2020 or later running macOS 12 Monterey or later.
@@ -158,6 +162,12 @@ This file records important decisions so we do not lose context as the design gr
 - Other Unix/Unix-like desktops receive best-effort support through standards-compliant current browsers.
 - Internet Explorer 11 and Edge IE mode are not supported targets.
 - Customer Frontend compatibility is certified from 320 CSS pixels through large desktop layouts.
+- After the Arfa review, dedicated customer applications for iOS and Android
+  become a planned product track. They reuse the versioned Web Service,
+  authentication, chat, profile, credit, gift, safety, and policy contracts
+  rather than creating separate business rules.
+- Employee, administrator, CEO, and robot operations remain outside the
+  customer mobile apps. Robot conversation work remains headless.
 - While a customer is online, activity is reconciled at least every three minutes for chats, chat-history presence, favorites, inbox, search results, and profile interaction requests.
 - Real-time events may arrive immediately; the three-minute cycle is the maximum reconciliation interval.
 - Profile interaction request types are Hello, Cuddle, Hug, Flirt, Teasing, and SexRequest.
