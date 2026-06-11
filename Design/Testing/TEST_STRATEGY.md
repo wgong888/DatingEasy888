@@ -20,6 +20,10 @@ testing described below.
 - Prevent duplicate charges, duplicate messages, and inconsistent credit balances.
 - Verify the 20-active-seed, 10-chat, and two-hour daily limits.
 - Confirm that the customer Frontend works on desktop and mobile phones.
+- Confirm that every core customer workflow remains complete in a mobile
+  browser and does not require installation of the iOS or Android application.
+- Confirm that web and installed applications use the same authoritative
+  account, conversation, credit, gift, safety, and policy state.
 - Confirm that the employee/admin Backend works reliably on large desktop screens.
 - Demonstrate launch readiness through measurable release gates.
 
@@ -160,6 +164,14 @@ Customer Frontend:
   insufficient balance without any partial transaction
 - Block/report
 - Review ledger/history
+- Complete registration, profile, discovery, chat, credit purchase, gift,
+  block/report, settings, and logout in a mobile browser without encountering
+  a mandatory app-install step
+- Dismiss an app-install prompt and continue using the complete browser product
+- Open the same test account in browser and installed-app test clients and
+  reconcile profile, message, balance, favorite, and safety changes
+- Open and close the mobile on-screen keyboard without hiding the composer,
+  send command, current balance, or required safety action
 
 Employee Backend:
 - Login

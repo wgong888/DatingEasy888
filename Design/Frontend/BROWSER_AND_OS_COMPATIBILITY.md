@@ -5,7 +5,19 @@ Status: confirmed design direction. Exact browser versions are evaluated again b
 ## 1. Objective
 The DatingEasy888 customer Frontend must provide the same core registration, discovery, profile, chat, safety, credits, and account workflows across common desktop and mobile operating systems.
 
-Compatibility is browser-based. The product does not install operating-system-specific customer software.
+Customers may choose either:
+
+1. The customer website in a supported desktop or mobile browser
+2. A future installed iOS or Android customer application
+
+The browser experience remains fully supported after the native applications
+launch. Installing an application is optional and cannot be required for
+registration, profile management, discovery, favorites, chat, purchases,
+credits, gifts, blocking, reporting, privacy, or account management.
+
+Native-only conveniences may include push notifications, biometric sign-in,
+camera integration, and operating-system shortcuts. Equivalent core outcomes
+must remain available in the browser.
 
 ## 2. Supported Operating-System Families
 
@@ -112,6 +124,7 @@ All fully supported browser/OS combinations must provide:
 - Credits display, checkout handoff, and transaction history
 - Notifications and unread state
 - Account privacy and security controls
+- Continued browser use without a mandatory app-install interstitial
 
 Visual appearance may vary slightly because of fonts, form controls, scrolling, and rendering engines. Function, meaning, safety, and accessibility must remain equivalent.
 
@@ -130,6 +143,10 @@ Requirements:
 - Core actions do not depend on hover, right-click, or a physical keyboard.
 - Touch targets remain at least 44 by 44 CSS pixels where practical.
 - Layout works at 200% browser zoom and with enlarged system text for required accessibility flows.
+- Mobile browser chrome, safe areas, and the on-screen keyboard do not hide the
+  chat composer, send command, checkout controls, or safety actions.
+- Installation banners are dismissible, remember dismissal for a reasonable
+  period, and never cover a required customer command.
 
 ## 8. Implementation Compatibility Rules
 - Prefer stable HTML, CSS, JavaScript, and Web Platform standards.

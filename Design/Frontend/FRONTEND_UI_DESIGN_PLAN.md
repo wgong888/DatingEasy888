@@ -13,6 +13,12 @@ discovery, favorites, chat, gifts, credits, safety, and account management
 must remain complete on phones. Desktop may use additional space, but it must
 not become the only usable path for a customer action.
 
+Customers may either install the future iOS/Android application or continue
+using DatingEasy888 entirely through a mobile browser. The mobile website
+remains a first-class experience after native applications launch. No core
+workflow may require installation, and app-install prompts must be dismissible
+and must not obstruct login, navigation, chat, payment, or safety controls.
+
 ---
 
 ## 1. Navigation Flow & Screen Map
@@ -748,6 +754,9 @@ Linux, iOS/iPadOS, Android, and ChromeOS. Internet Explorer 11 is not supported.
 - Larger touch targets (44px+)
 - Stacked forms
 - Compact content density without cramped controls
+- Safe-area support around notches, browser toolbars, and home indicators
+- Composer and primary action remain visible when the on-screen keyboard opens
+- No hover-only commands or app-only customer actions
 - Primary customer actions reachable with one hand where practical
 - No desktop-only interaction dependency such as hover
 

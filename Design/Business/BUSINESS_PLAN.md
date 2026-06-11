@@ -78,8 +78,11 @@ The customer application provides:
 - Credit balance and transaction history
 - Clear profile identity: `Real Member` or `Virtual Profile`
 
-The customer application remains mobile-first web through Arfa and Beta. Native
-iOS and Android applications follow after the web workflows and APIs are stable.
+The customer product remains mobile-first web through Arfa and Beta. Native iOS
+and Android applications follow after the web workflows and APIs are stable.
+After launch, customers may choose the installed application or continue using
+the complete service in a mobile browser. The website remains a first-class
+acquisition and usage channel, and no core workflow requires installation.
 
 ### Virtual Conversation
 

@@ -152,6 +152,14 @@ This file records important decisions so we do not lose context as the design gr
   phones as their primary and most frequent access device.
 - Every customer workflow is designed and accepted at supported phone widths
   first, then enhanced for tablet and desktop without removing core features.
+- Customers may choose the supported mobile website or a future installed iOS
+  or Android application. Application installation is optional.
+- The mobile website remains a first-class, complete customer product after
+  native applications launch; no core workflow may become app-only.
+- Web and native clients use the same authoritative account, profile,
+  conversation, credit, purchase, gift, safety, and policy data.
+- Native conveniences may differ, but app-install promotion must be
+  dismissible and must not obstruct or degrade continued browser use.
 - Customer Frontend is simple, compact, robust, and easy to use on desktop and mobile phones.
 - Customer Frontend supports Windows 10 22H2 as a time-limited legacy target and fully supports Windows 11.
 - Customer Frontend supports Mac computers introduced in 2020 or later running macOS 12 Monterey or later.

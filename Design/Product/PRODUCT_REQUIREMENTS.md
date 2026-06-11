@@ -158,6 +158,11 @@ updates and incoming notifications do not reset this timer.
 ### Customer Frontend
 - Mobile-first: phone interaction, layout, performance, and readability are
   the primary design and acceptance target.
+- Customers may use the complete service in a supported mobile browser without
+  installing an application.
+- The mobile website remains a first-class supported product after native iOS
+  and Android applications launch; installation is optional and must never be
+  required for a core customer workflow.
 - Simple and compact
 - Robust and reliable
 - Easy to use without training
@@ -177,9 +182,17 @@ updates and incoming notifications do not reset this timer.
 ### Customer Mobile Applications
 - Dedicated iOS and Android customer applications are planned after the Arfa
   review.
+- Customers choose independently between the installed application and the
+  mobile website and may move between them with the same account.
 - The apps provide the same authoritative customer accounts, profiles,
   conversations, balances, purchases, gifts, safety state, and policies as the
   customer web experience through shared versioned APIs.
+- Core customer capabilities remain functionally equivalent in the application
+  and supported mobile browsers. Native conveniences such as push notifications,
+  biometric sign-in, camera integration, and app shortcuts may differ without
+  making the browser path incomplete.
+- Marketing and account screens may offer app installation, but they must not
+  block, repeatedly interrupt, or degrade continued browser use.
 - Mobile apps must not duplicate credit, payment, chat, robot, moderation, or
   eligibility rules in a way that can diverge from the Web Service.
 - Native-app technology, store-account ownership, push notifications,
