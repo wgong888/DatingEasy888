@@ -66,6 +66,13 @@ payment approval is excluded and requires the CEO.
 - Review workload, activity, contribution, earnings, and security history
 
 ## Robot Customer Management
+- Create a robot customer in `Full profile` mode by entering every
+  customer-visible profile field
+- Create a robot customer in `Auto-fill` mode by entering name, age, sex,
+  country, state/province, and city and allowing the system to generate the
+  remaining fields
+- Preview all generated fields and keep every new robot inactive until required
+  profile and provenance reviews pass
 - Search robot profiles by city, sex, status, health, shift, and daily time
 - Open and edit the same profile fields presented for real customers
 - Preview the customer-visible profile without exposing internal classification

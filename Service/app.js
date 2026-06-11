@@ -215,6 +215,47 @@ function defaultProfilePhoto(sex) {
   return '/assets/profiles/default-neutral.svg';
 }
 
+function birthDateForAge(age) {
+  const today = new Date();
+  const year = today.getUTCFullYear() - age;
+  const month = String(today.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(today.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function generatedRobotProfile({ displayName, age, sex, countryCode, state, city }) {
+  const lookingFor = sex === 'Man' ? 'Women' : sex === 'Woman' ? 'Men' : 'Everyone';
+  const interests = ['Traveling', 'Cooking', 'Music'];
+  const bio = `${displayName} enjoys good conversation, local discoveries, and relaxed moments in ${city}. Kindness, curiosity, and a sense of humor matter most.`;
+  const profilePhoto = defaultProfilePhoto(sex);
+  return {
+    displayName,
+    birthDate: birthDateForAge(age),
+    sex,
+    lookingFor,
+    countryCode,
+    state,
+    city,
+    maritalStatus: 'Single',
+    workField: 'Creative services',
+    englishLevel: 'Advanced',
+    languages: ['English'],
+    traits: ['Warm', 'Thoughtful', 'Humorous'],
+    interests,
+    movies: ['Comedy', 'Adventure'],
+    music: ['Jazz', 'Pop'],
+    goals: ['Chatting', 'Finding a friend'],
+    preferredAgeMin: Math.max(21, age - 10),
+    preferredAgeMax: Math.min(100, age + 10),
+    personalityType: 'Friendly and curious',
+    bio,
+    story: `${displayName} likes sharing stories about food, music, travel, and everyday life, and is always ready to listen with genuine interest.`,
+    profilePhoto,
+    publicPhotos: [profilePhoto],
+    privatePhotos: []
+  };
+}
+
 function customerPhoto(row) {
   const stored = row.ProfilePhoto || defaultProfilePhoto(row.Sex);
   const separator = stored.lastIndexOf('#');
@@ -2300,6 +2341,213 @@ function createApplication(options = {}) {
       return json(res, 201, envelope({ policyId }, requestId));
     }
 
+    if (req.method === 'POST' && pathname === '/api/v1/admin/robot-customers') {
+      const session = requireAdmin(db, req);
+      const body = await readJson(req);
+      const creationMode = String(body.creationMode || '');
+      const displayName = String(body.displayName || '').trim();
+      const age = Number(body.age);
+      const sex = String(body.sex || '').trim();
+      const countryCode = String(body.countryCode || '').trim().toUpperCase();
+      const state = String(body.state || '').trim();
+      const city = String(body.city || '').trim();
+      const fields = {};
+      if (!['AutoFill', 'FullProfile'].includes(creationMode)) {
+        fields.creationMode = ['Choose auto-fill or full profile.'];
+      }
+      if (displayName.length < 2 || displayName.length > 100) {
+        fields.displayName = ['Name must contain 2 to 100 characters.'];
+      }
+      if (!Number.isInteger(age) || age < 21 || age > 100) {
+        fields.age = ['Robot age must be between 21 and 100.'];
+      }
+      if (!['Man', 'Woman', 'Nonbinary', 'NotSpecified'].includes(sex)) {
+        fields.sex = ['Select a supported sex value.'];
+      }
+      if (!/^[A-Z]{2}$/u.test(countryCode)) fields.countryCode = ['Enter a two-letter country code.'];
+      if (!state || state.length > 120) fields.state = ['Enter a state or province.'];
+      if (!city || city.length > 120) fields.city = ['Enter a city.'];
+      if (Object.keys(fields).length) {
+        throw new ApiError(422, 'VALIDATION_FAILED', 'Please check the submitted fields.', fields);
+      }
+
+      const base = { displayName, age, sex, countryCode, state, city };
+      const profile = creationMode === 'AutoFill'
+        ? generatedRobotProfile(base)
+        : {
+            ...base,
+            birthDate: birthDateForAge(age),
+            lookingFor: String(body.lookingFor || '').trim(),
+            maritalStatus: String(body.maritalStatus || '').trim(),
+            workField: String(body.workField || '').trim(),
+            englishLevel: String(body.englishLevel || '').trim(),
+            languages: cleanStringArray(body.languages, 8),
+            traits: cleanStringArray(body.traits, 3),
+            interests: cleanStringArray(body.interests, 5),
+            movies: cleanStringArray(body.movies, 3),
+            music: cleanStringArray(body.music, 3),
+            goals: cleanStringArray(body.goals, 3),
+            preferredAgeMin: Number(body.preferredAgeMin),
+            preferredAgeMax: Number(body.preferredAgeMax),
+            personalityType: String(body.personalityType || '').trim(),
+            bio: String(body.bio || '').trim(),
+            story: String(body.story || '').trim(),
+            profilePhoto: String(body.profilePhoto || defaultProfilePhoto(sex)).trim(),
+            publicPhotos: cleanStringArray(body.publicPhotos, 3),
+            privatePhotos: cleanStringArray(body.privatePhotos, 3)
+          };
+
+      if (creationMode === 'FullProfile') {
+        if (!profile.publicPhotos.length) profile.publicPhotos = [profile.profilePhoto];
+        const requiredText = [
+          'lookingFor',
+          'maritalStatus',
+          'workField',
+          'englishLevel',
+          'personalityType',
+          'bio',
+          'story'
+        ];
+        for (const key of requiredText) {
+          if (!profile[key]) fields[key] = ['This profile field is required in full-profile mode.'];
+        }
+        for (const key of ['languages', 'traits', 'interests', 'movies', 'music', 'goals']) {
+          if (!profile[key].length) fields[key] = ['Add at least one value.'];
+        }
+        if (
+          !Number.isInteger(profile.preferredAgeMin) ||
+          !Number.isInteger(profile.preferredAgeMax) ||
+          profile.preferredAgeMin < 18 ||
+          profile.preferredAgeMax < profile.preferredAgeMin ||
+          profile.preferredAgeMax > 120
+        ) {
+          fields.preferredAge = ['Enter a valid preferred age range.'];
+        }
+        if (profile.bio.length > 4000) fields.bio = ['Biography must not exceed 4,000 characters.'];
+        if (profile.story.length > 4000) fields.story = ['Story must not exceed 4,000 characters.'];
+        if (!validProfilePhoto(profile.profilePhoto)) {
+          fields.profilePhoto = ['Use an approved profile asset or JPG/PNG image.'];
+        }
+        if (![...profile.publicPhotos, ...profile.privatePhotos].every(validProfilePhoto)) {
+          fields.photos = ['Every public and private photo must use an approved JPG or PNG asset.'];
+        }
+        if (Object.keys(fields).length) {
+          throw new ApiError(422, 'VALIDATION_FAILED', 'Complete every required robot profile field.', fields);
+        }
+      }
+
+      const customerId = randomUUID();
+      const provenanceId = randomUUID();
+      const timestamp = now();
+      const internalEmail = `robot-${displayName.toLowerCase()
+        .replace(/[^a-z0-9]+/gu, '-')
+        .replace(/^-|-$/gu, '')
+        .slice(0, 40) || 'profile'}-${customerId.slice(0, 8)}@virtual.datingeasy.test`;
+      const autoFilledFields = creationMode === 'AutoFill'
+        ? [
+            'birthDate', 'lookingFor', 'maritalStatus', 'workField',
+            'englishLevel', 'languages', 'traits', 'interests', 'movies',
+            'music', 'goals', 'preferredAgeMin', 'preferredAgeMax',
+            'personalityType', 'bio', 'story', 'profilePhoto',
+            'publicPhotos', 'privatePhotos'
+          ]
+        : ['birthDate'];
+      const completeness = profileCompleteness(profile);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          INSERT INTO CustomerProfile (
+            CustomerId, Email, EmailNormalized, Phone, PasswordHash, DisplayName,
+            BirthDate, Sex, GenderLookingFor, CountryCode, StateId, CityName,
+            MaritalStatus, WorkField, EnglishLevel, LanguagesJson, TraitsJson,
+            InterestsJson, MoviePreferencesJson, MusicPreferencesJson, GoalsJson,
+            PreferredAgeMin, PreferredAgeMax, PersonalityType, Story, Bio,
+            ProfilePhoto, PublicPhotosJson, PrivatePhotosJson, ProfileCompleted,
+            ProfileCompleteness, CreateTime, UpdateTime, Active, Seed,
+            CreditsRemain, TotalCharged, Remark
+          ) VALUES (
+            ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, 2, 0, 0, ?
+          )
+        `).run(
+          customerId,
+          internalEmail,
+          internalEmail,
+          hashPassword(randomUUID()),
+          profile.displayName,
+          profile.birthDate,
+          profile.sex,
+          profile.lookingFor,
+          profile.countryCode,
+          profile.state,
+          profile.city,
+          profile.maritalStatus,
+          profile.workField,
+          profile.englishLevel,
+          JSON.stringify(profile.languages),
+          JSON.stringify(profile.traits),
+          JSON.stringify(profile.interests),
+          JSON.stringify(profile.movies),
+          JSON.stringify(profile.music),
+          JSON.stringify(profile.goals),
+          profile.preferredAgeMin,
+          profile.preferredAgeMax,
+          profile.personalityType,
+          profile.story,
+          profile.bio,
+          profile.profilePhoto,
+          JSON.stringify(profile.publicPhotos),
+          JSON.stringify(profile.privatePhotos),
+          completeness,
+          timestamp,
+          timestamp,
+          `Admin-created robot draft (${creationMode})`
+        );
+        db.prepare(`
+          INSERT INTO SeedProfileProvenance (
+            SeedProfileProvenanceId, CustomerId, CreationSource,
+            CreatedByEmployeeId, AutoFilledFieldsJson, GenerationBatchId, AssetSourceType,
+            CharacterSpecVersion, TextModelVersion, ImageModelVersion,
+            PromptPolicyVersion, OriginalityCheckStatus,
+            AdultAppearanceCheckStatus, HumanReviewStatus, GeneratedTime, Remark
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Pending', 'Pending', ?, ?)
+        `).run(
+          provenanceId,
+          customerId,
+          creationMode === 'AutoFill' ? 'AdminAssisted' : 'AdminFull',
+          session.PrincipalId,
+          JSON.stringify(autoFilledFields),
+          randomUUID(),
+          creationMode === 'AutoFill' ? 'SystemGenerated' : 'AdminProvided',
+          'robot-profile-v1',
+          creationMode === 'AutoFill' ? 'PrototypeRulesV1' : null,
+          creationMode === 'AutoFill' ? 'DefaultIllustrationV1' : null,
+          'robot-profile-policy-v1',
+          timestamp,
+          'Inactive until originality, adult-appearance, and human review pass.'
+        );
+        audit(db, 'Employee', session.PrincipalId, 'RobotCustomerCreated', 'Customer', customerId, {
+          creationMode,
+          autoFilledFields,
+          active: false,
+          reviewStatus: 'Pending'
+        });
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return json(res, 201, envelope({
+        customerId,
+        displayName: profile.displayName,
+        creationMode,
+        autoFilledFields,
+        profileCompleteness: completeness,
+        active: false,
+        reviewStatus: 'Pending'
+      }, requestId));
+    }
+
     if (
       req.method === 'PATCH' &&
       (params = matchPath(pathname, '/api/v1/admin/policies/:policyId'))
@@ -2333,8 +2581,11 @@ function createApplication(options = {}) {
       const robots = db.prepare(`
         SELECT p.CustomerId, p.DisplayName, p.Sex, p.Active, p.CityName,
           s.RobotShiftScheduleId, s.PlannedStartTime, s.PlannedEndTime,
-          s.ShiftStatus, s.IsReserve
+          s.ShiftStatus, s.IsReserve, provenance.CreationSource,
+          provenance.HumanReviewStatus, provenance.AutoFilledFieldsJson
         FROM CustomerProfile p
+        LEFT JOIN SeedProfileProvenance provenance
+          ON provenance.CustomerId = p.CustomerId
         LEFT JOIN RobotShiftSchedule s
           ON s.RobotCustomerId = p.CustomerId
           AND s.ShiftStatus = 'Active'
@@ -2379,12 +2630,16 @@ function createApplication(options = {}) {
           customerId: robot.CustomerId,
           displayName: robot.DisplayName,
           sex: robot.Sex,
+          city: robot.CityName,
           active: Boolean(robot.Active),
           online: robot.ShiftStatus === 'Active',
           shiftId: robot.RobotShiftScheduleId,
           shiftStart: robot.PlannedStartTime,
           shiftEnd: robot.PlannedEndTime,
-          reserve: Boolean(robot.IsReserve)
+          reserve: Boolean(robot.IsReserve),
+          creationSource: robot.CreationSource || 'SystemAutomatic',
+          reviewStatus: robot.HumanReviewStatus || 'Approved',
+          autoFilledFields: parseJsonArray(robot.AutoFilledFieldsJson)
         })),
         shifts: shifts.map((shift) => ({
           shiftId: shift.RobotShiftScheduleId,

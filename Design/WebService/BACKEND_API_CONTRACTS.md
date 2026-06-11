@@ -494,6 +494,19 @@ Asynchronous and auditable.
 
 ## 8A. Robot Customer Administration
 
+### Create Robot Customer
+`POST /api/v1/admin/robot-customers`
+
+Supports:
+- `FullProfile`: administrator supplies all customer-visible profile fields.
+- `AutoFill`: administrator supplies name, age, sex, country, state/province,
+  and city; the service generates the remaining profile fields.
+
+The service generates the UUID and internal non-login credentials, sets
+`Seed = 2`, records creation provenance and exact auto-filled fields, and
+creates an inactive draft with pending review. Creation does not schedule,
+publish, or allow the robot to chat.
+
 ### List Robot Customers
 `GET /api/v1/admin/robot-customers`
 

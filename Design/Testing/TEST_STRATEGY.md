@@ -81,6 +81,12 @@ High-priority business rules:
 - Robot customer profile has the same customer-facing field shape as a real profile
 - Customer APIs never expose robot classification
 - Admin can edit a robot profile and the public profile reflects allowed changes
+- Admin can create a full-profile robot and the entered fields are preserved
+- Admin can create a robot from name, age, sex, and location and the system
+  auto-fills every remaining required profile field
+- Admin-created robots remain inactive and unscheduled while review is pending
+- Robot creation records the initiating administrator, creation source, and
+  exact auto-filled fields in provenance and audit history
 - Non-admin roles cannot view or edit robot classification
 - Each large city rejects activation with fewer than three Man or three Woman robots
 - Robot daily activity cannot exceed 28,800 seconds in the city timezone

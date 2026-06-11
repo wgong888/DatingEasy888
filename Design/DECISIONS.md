@@ -219,6 +219,13 @@ This file records important decisions so we do not lose context as the design gr
   the internal robot classification.
 - Authorized administrators may edit robot profiles, with immutable provenance
   and before/after audit history.
+- Authorized administrators may create robot customers through the Admin
+  Backend using either full-profile mode or assisted auto-fill mode.
+- Both creation modes require name, age, sex, country, state/province, and city.
+  Assisted mode generates all remaining profile fields and records exactly
+  which fields were generated.
+- Admin-created robots receive system-generated UUIDs and internal non-login
+  credentials and begin inactive with pending provenance and human review.
 - Each approved large city has at least six robot profiles: at least three Man
   and three Woman.
 - A robot profile may be customer-visible online and chat-eligible for no more

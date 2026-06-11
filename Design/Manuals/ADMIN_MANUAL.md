@@ -144,13 +144,29 @@ Robot customers are `CustomerProfile.Seed = 2` profiles. This classification is
 visible only in authorized company tools.
 
 Administrators may:
-1. Search and open a robot profile.
-2. Edit normal profile fields and preview the customer-visible result.
-3. Review provenance, approval, health, city, shift, and daily online time.
-4. Activate, suspend, retire, restore, or request replacement with a reason.
-5. Review city inventory and confirm at least three Man and three Woman robots.
-6. Review whether at least one Man and one Woman robot are currently online.
-7. Regenerate future shifts or trigger an eligible emergency replacement.
+1. Create a robot in `Full profile` mode by entering every profile field.
+2. Create a robot in `Auto-fill` mode by entering name, age, sex, country,
+   state/province, and city and reviewing the generated remainder.
+3. Search and open a robot profile.
+4. Edit normal profile fields and preview the customer-visible result.
+5. Review provenance, approval, health, city, shift, and daily online time.
+6. Activate, suspend, retire, restore, or request replacement with a reason.
+7. Review city inventory and confirm at least three Man and three Woman robots.
+8. Review whether at least one Man and one Woman robot are currently online.
+9. Regenerate future shifts or trigger an eligible emergency replacement.
+
+To create a robot:
+1. Select `Add robot customer`.
+2. Choose `Enter basics and auto-fill the rest` or `Enter the full profile`.
+3. Enter name, age, sex, country, state/province, and city.
+4. In full-profile mode, complete every remaining field.
+5. Submit and review the inactive draft.
+6. Confirm which fields were auto-filled and edit them where necessary.
+7. Complete originality, adult-appearance, rights, quality, and human review
+   before activation.
+
+The system generates the UUID and internal non-login credentials. The robot is
+not scheduled, shown online, or allowed to chat while its review is pending.
 
 Administrators must not:
 - Convert a robot into a real customer through ordinary profile editing.

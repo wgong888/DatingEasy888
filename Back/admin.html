@@ -111,7 +111,10 @@
       <section id="admin-view-robots" class="admin-view hidden">
         <div class="page-title">
           <div><h1>Robot operations</h1><p>Background coverage, shifts, and the global English response policy.</p></div>
-          <button id="refresh-robots" class="secondary" type="button">Refresh status</button>
+          <div class="page-actions">
+            <button id="refresh-robots" class="secondary" type="button">Refresh status</button>
+            <button id="add-robot" class="primary" type="button">Add robot customer</button>
+          </div>
         </div>
         <section id="robot-summary" class="robot-summary-grid"></section>
         <div class="robot-operations-grid">
@@ -217,6 +220,65 @@
       <label>Business description<textarea name="description" rows="4" minlength="5" maxlength="500" required></textarea></label>
       <p class="form-guidance">Submitting creates an immutable pending request. Only the CEO can approve or deny it.</p>
       <div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>Cancel</button><button class="primary" type="submit">Send to CEO</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="robot-dialog" class="admin-dialog robot-dialog">
+    <form id="robot-form">
+      <div class="dialog-heading"><h2>Create robot customer</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <label>Creation mode
+        <select name="creationMode" required>
+          <option value="AutoFill">Enter basics and auto-fill the rest</option>
+          <option value="FullProfile">Enter the full profile</option>
+        </select>
+      </label>
+      <div class="robot-form-grid">
+        <label>Name<input name="displayName" minlength="2" maxlength="100" required></label>
+        <label>Age<input name="age" type="number" min="21" max="100" required></label>
+        <label>Sex
+          <select name="sex" required>
+            <option value="Woman">Woman</option>
+            <option value="Man">Man</option>
+            <option value="Nonbinary">Nonbinary</option>
+            <option value="NotSpecified">Not specified</option>
+          </select>
+        </label>
+        <label>Country code<input name="countryCode" value="US" minlength="2" maxlength="2" required></label>
+        <label>State or province<input name="state" value="CA" maxlength="120" required></label>
+        <label>City<input name="city" value="Los Angeles" maxlength="120" required></label>
+      </div>
+      <p id="robot-mode-guidance" class="form-guidance">The system will create a complete inactive draft from these required details.</p>
+      <div id="robot-full-fields" class="robot-full-fields hidden">
+        <div class="robot-form-grid">
+          <label>Looking for
+            <select name="lookingFor">
+              <option value="">Select</option>
+              <option>Men</option>
+              <option>Women</option>
+              <option>Everyone</option>
+            </select>
+          </label>
+          <label>Marital status<input name="maritalStatus"></label>
+          <label>Work field<input name="workField"></label>
+          <label>English level<input name="englishLevel"></label>
+          <label>Preferred age minimum<input name="preferredAgeMin" type="number" min="18" max="120"></label>
+          <label>Preferred age maximum<input name="preferredAgeMax" type="number" min="18" max="120"></label>
+        </div>
+        <label>Languages, comma separated<input name="languages"></label>
+        <label>Traits, comma separated<input name="traits"></label>
+        <label>Interests, comma separated<input name="interests"></label>
+        <label>Movie preferences, comma separated<input name="movies"></label>
+        <label>Music preferences, comma separated<input name="music"></label>
+        <label>Goals, comma separated<input name="goals"></label>
+        <label>Personality type<input name="personalityType"></label>
+        <label>Biography<textarea name="bio" rows="3" maxlength="4000"></textarea></label>
+        <label>Story<textarea name="story" rows="3" maxlength="4000"></textarea></label>
+        <label>Profile photo asset<input name="profilePhoto" placeholder="/assets/profiles/default-woman.svg"></label>
+        <label>Additional public photo assets, comma separated<input name="publicPhotos" data-optional></label>
+        <label>Private photo assets, comma separated<input name="privatePhotos" data-optional></label>
+      </div>
+      <p class="form-guidance">New robot customers remain inactive until originality, adult-appearance, and human review are approved.</p>
+      <div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>Cancel</button><button class="primary" type="submit">Create robot draft</button></div>
     </form>
   </dialog>
 </body>

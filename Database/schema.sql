@@ -44,6 +44,32 @@ CREATE TABLE IF NOT EXISTS CustomerProfile (
     Remark TEXT
 );
 
+CREATE TABLE IF NOT EXISTS SeedProfileProvenance (
+    SeedProfileProvenanceId TEXT PRIMARY KEY,
+    CustomerId TEXT NOT NULL UNIQUE REFERENCES CustomerProfile(CustomerId),
+    CreationSource TEXT NOT NULL CHECK (
+        CreationSource IN ('SystemAutomatic', 'AdminFull', 'AdminAssisted')
+    ),
+    CreatedByEmployeeId TEXT REFERENCES Employees(EmployeeId),
+    AutoFilledFieldsJson TEXT NOT NULL DEFAULT '[]',
+    GenerationBatchId TEXT NOT NULL,
+    AssetSourceType TEXT NOT NULL,
+    CharacterSpecVersion TEXT NOT NULL,
+    TextModelVersion TEXT,
+    ImageModelVersion TEXT,
+    PromptPolicyVersion TEXT NOT NULL,
+    RightsReference TEXT,
+    OriginalityCheckStatus TEXT NOT NULL,
+    AdultAppearanceCheckStatus TEXT NOT NULL,
+    HumanReviewStatus TEXT NOT NULL,
+    ApprovedByEmployeeId TEXT REFERENCES Employees(EmployeeId),
+    ApprovedTime TEXT,
+    ProfilePresentationVersion TEXT,
+    GeneratedTime TEXT NOT NULL,
+    RetiredTime TEXT,
+    Remark TEXT
+);
+
 CREATE TABLE IF NOT EXISTS Employees (
     EmployeeId TEXT PRIMARY KEY,
     Email TEXT NOT NULL UNIQUE,

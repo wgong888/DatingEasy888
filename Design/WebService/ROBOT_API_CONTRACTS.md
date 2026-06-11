@@ -18,7 +18,45 @@ chat UI or expose robot-only routes to customer clients.
 
 `GET /api/v1/admin/robot-operations`
 - Returns internal city coverage, robot inventory, active/upcoming shifts,
-  global AI mode, budget limits, and simulated usage totals.
+  global AI mode, budget limits, simulated usage totals, creation source, and
+  review status.
+
+`POST /api/v1/admin/robot-customers`
+- Creates an inactive `CustomerProfile.Seed = 2` draft.
+- Requires `creationMode`, `displayName`, `age`, `sex`, `countryCode`, `state`,
+  and `city`.
+- `creationMode = AutoFill` generates the remaining customer-visible fields.
+- `creationMode = FullProfile` requires all customer-visible profile fields.
+- Generates internal UUID, email, password hash, and provenance.
+- Returns the fields that were auto-filled, profile completeness, and pending
+  review status.
+- Requires Administrator or CEO access and creates an audit event.
+
+Example auto-fill request:
+```json
+{
+  "creationMode": "AutoFill",
+  "displayName": "Taylor",
+  "age": 39,
+  "sex": "Woman",
+  "countryCode": "US",
+  "state": "CA",
+  "city": "Los Angeles"
+}
+```
+
+Example response:
+```json
+{
+  "customerId": "uuid",
+  "displayName": "Taylor",
+  "creationMode": "AutoFill",
+  "autoFilledFields": ["birthDate", "lookingFor", "bio", "story"],
+  "profileCompleteness": 100,
+  "active": false,
+  "reviewStatus": "Pending"
+}
+```
 
 `PUT /api/v1/admin/robot-ai-policy`
 - Sets the global `LocalOnly` or `HybridExternalAllowed` mode.

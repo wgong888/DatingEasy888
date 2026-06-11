@@ -10,6 +10,17 @@ test('existing prototype data is upgraded with robot inventory and AI policies',
   const databasePath = path.join(directory, 'migration.sqlite');
   let db = openDatabase(databasePath);
   db.prepare(`
+    DELETE FROM SeedProfileProvenance
+    WHERE CustomerId IN (
+      SELECT p.CustomerId FROM CustomerProfile p
+      WHERE p.Seed = 2 AND p.DisplayName <> 'Daniel'
+        AND NOT EXISTS (
+          SELECT 1 FROM Conversations c
+          WHERE c.CustomerAId = p.CustomerId OR c.CustomerBId = p.CustomerId
+        )
+    )
+  `).run();
+  db.prepare(`
     DELETE FROM CustomerProfile AS p
     WHERE p.Seed = 2 AND p.DisplayName <> 'Daniel'
       AND NOT EXISTS (

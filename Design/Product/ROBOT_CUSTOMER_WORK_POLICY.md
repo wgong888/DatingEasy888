@@ -14,6 +14,21 @@ employee seed-work queue.
   rules, profile layout, and chat controls as a real customer profile.
 - The system generates every robot profile from original synthetic or properly
   licensed material and records its provenance.
+- An authorized administrator may also create a robot customer through the
+  Robot Customers UI in either of two modes:
+  - `Full profile`: the administrator supplies every customer-visible profile
+    field.
+  - `Auto-fill`: the administrator supplies name, age, sex, country,
+    state/province, and city; the system generates the remaining profile fields.
+- An administrator-supplied age is converted to an internal birth date while
+  preserving the entered age at creation time.
+- The system creates the internal robot email, password hash, UUID, and
+  `Seed = 2` classification. Robot login credentials are not given to the
+  administrator because robot conversation work is headless.
+- Every admin-created robot begins inactive with pending originality,
+  adult-appearance, rights, profile-quality, and human review.
+- Auto-filled fields are shown for administrator review and recorded in
+  immutable provenance. An administrator may edit them before approval.
 - Customer-facing UI and APIs do not expose whether a profile is real, seed, or
   robot. The robot classification is restricted to authorized administrators,
   system services, audit records, and operational reports.
@@ -116,6 +131,7 @@ audited failure state.
 
 ## 9. Administrator Controls
 The Robot Customers admin area provides:
+- Create a robot using full-profile or basic-details-plus-auto-fill mode.
 - Search and filter by city, sex, profile status, health, current shift, daily
   seconds, and coverage eligibility.
 - Open and edit the full robot profile.

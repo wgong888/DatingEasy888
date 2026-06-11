@@ -93,6 +93,12 @@ updates and incoming notifications do not reset this timer.
 - Robot customer profiles use the same customer-facing fields and screens as
   real customer profiles. Internal robot classification is admin-only.
 - Authorized administrators may edit robot customer profiles.
+- Authorized administrators may create robot customers in the Admin Backend.
+  They may enter the full profile or provide name, age, sex, country,
+  state/province, and city and ask the system to auto-fill the remaining
+  customer-visible fields.
+- Admin-created robot profiles are inactive drafts until required provenance,
+  originality, adult-appearance, rights, quality, and human reviews pass.
 - Every approved large city has at least six robot customers, including at
   least three Man and three Woman profiles.
 - Each robot customer may work no more than eight hours per assigned-city local day.

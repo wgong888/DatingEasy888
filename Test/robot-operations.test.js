@@ -164,6 +164,126 @@ test('admin controls global AI mode, budgets, usage, and future shift regenerati
   assert.equal(regenerated.payload.data.shiftCount, 6);
 });
 
+test('admin creates an inactive robot draft from basic details with auto-filled profile data', async () => {
+  const admin = await login('admin@datingeasy.test');
+  const created = await request('/api/v1/admin/robot-customers', {
+    method: 'POST',
+    headers: { Cookie: admin.cookie },
+    body: {
+      creationMode: 'AutoFill',
+      displayName: 'Taylor',
+      age: 39,
+      sex: 'Woman',
+      countryCode: 'US',
+      state: 'CA',
+      city: 'Los Angeles'
+    }
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.payload.data.active, false);
+  assert.equal(created.payload.data.reviewStatus, 'Pending');
+  assert.equal(created.payload.data.profileCompleteness, 100);
+  assert.ok(created.payload.data.autoFilledFields.includes('bio'));
+
+  const profile = app.db.prepare(`
+    SELECT * FROM CustomerProfile WHERE CustomerId = ?
+  `).get(created.payload.data.customerId);
+  assert.equal(profile.Seed, 2);
+  assert.equal(profile.Active, 0);
+  assert.equal(profile.ProfileCompleted, 1);
+  assert.equal(profile.DisplayName, 'Taylor');
+  assert.equal(profile.CityName, 'Los Angeles');
+  assert.ok(profile.Bio.includes('Taylor'));
+  assert.deepEqual(JSON.parse(profile.LanguagesJson), ['English']);
+
+  const provenance = app.db.prepare(`
+    SELECT * FROM SeedProfileProvenance WHERE CustomerId = ?
+  `).get(profile.CustomerId);
+  assert.equal(provenance.CreationSource, 'AdminAssisted');
+  assert.equal(provenance.CreatedByEmployeeId, admin.payload.data.employeeId);
+  assert.equal(provenance.HumanReviewStatus, 'Pending');
+  assert.ok(JSON.parse(provenance.AutoFilledFieldsJson).includes('profilePhoto'));
+  assert.equal(
+    app.db.prepare(`
+      SELECT COUNT(*) AS value FROM RobotShiftSchedule WHERE RobotCustomerId = ?
+    `).get(profile.CustomerId).value,
+    0
+  );
+});
+
+test('admin creates a full-profile robot draft and preserves supplied profile fields', async () => {
+  const admin = await login('admin@datingeasy.test');
+  const created = await request('/api/v1/admin/robot-customers', {
+    method: 'POST',
+    headers: { Cookie: admin.cookie },
+    body: {
+      creationMode: 'FullProfile',
+      displayName: 'Morgan',
+      age: 42,
+      sex: 'Man',
+      countryCode: 'US',
+      state: 'WA',
+      city: 'Seattle',
+      lookingFor: 'Women',
+      maritalStatus: 'Single',
+      workField: 'Architecture',
+      englishLevel: 'Advanced',
+      languages: ['English', 'Spanish'],
+      traits: ['Kind', 'Curious', 'Patient'],
+      interests: ['Cooking', 'Art', 'Traveling'],
+      movies: ['Comedy', 'Documentary'],
+      music: ['Jazz', 'Folk'],
+      goals: ['Chatting', 'A relationship'],
+      preferredAgeMin: 32,
+      preferredAgeMax: 55,
+      personalityType: 'Quiet thinker',
+      bio: 'Architect, home cook, and curious city walker.',
+      story: 'I enjoy thoughtful conversations, neighborhood discoveries, and sharing a good meal.',
+      profilePhoto: '/assets/profiles/default-man.svg',
+      publicPhotos: ['/assets/profiles/default-man.svg'],
+      privatePhotos: ['/assets/profiles/default-neutral.svg']
+    }
+  });
+  assert.equal(created.response.status, 201);
+  assert.deepEqual(created.payload.data.autoFilledFields, ['birthDate']);
+
+  const profile = app.db.prepare(`
+    SELECT * FROM CustomerProfile WHERE CustomerId = ?
+  `).get(created.payload.data.customerId);
+  assert.equal(profile.Active, 0);
+  assert.equal(profile.CityName, 'Seattle');
+  assert.equal(profile.WorkField, 'Architecture');
+  assert.deepEqual(JSON.parse(profile.LanguagesJson), ['English', 'Spanish']);
+  assert.deepEqual(JSON.parse(profile.PrivatePhotosJson), ['/assets/profiles/default-neutral.svg']);
+  assert.equal(profile.ProfileCompleteness, 100);
+
+  const provenance = app.db.prepare(`
+    SELECT * FROM SeedProfileProvenance WHERE CustomerId = ?
+  `).get(profile.CustomerId);
+  assert.equal(provenance.CreationSource, 'AdminFull');
+  assert.deepEqual(JSON.parse(provenance.AutoFilledFieldsJson), ['birthDate']);
+});
+
+test('full-profile robot creation rejects missing profile details', async () => {
+  const admin = await login('admin@datingeasy.test');
+  const rejected = await request('/api/v1/admin/robot-customers', {
+    method: 'POST',
+    headers: { Cookie: admin.cookie },
+    body: {
+      creationMode: 'FullProfile',
+      displayName: 'Incomplete Robot',
+      age: 40,
+      sex: 'Woman',
+      countryCode: 'US',
+      state: 'CA',
+      city: 'Los Angeles'
+    }
+  });
+  assert.equal(rejected.response.status, 422);
+  assert.equal(rejected.payload.error.code, 'VALIDATION_FAILED');
+  assert.ok(rejected.payload.error.fields.bio);
+});
+
 test('hybrid mode records simulated outside AI usage and local mode does not', async () => {
   const robot = activeRobots()[0];
   const registered = await request('/api/v1/auth/customer/register', {

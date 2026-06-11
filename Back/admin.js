@@ -206,11 +206,19 @@ async function loadPolicies() {
 function renderRobots(data) {
   state.robots = data;
   const online = data.robots.filter((robot) => robot.online);
+  const approvedInventory = data.robots.filter(
+    (robot) => robot.active && robot.reviewStatus === 'Approved'
+  );
+  const draftCount = data.robots.length - approvedInventory.length;
   const menOnline = online.filter((robot) => robot.sex === 'Man').length;
   const womenOnline = online.filter((robot) => robot.sex === 'Woman').length;
   $('#robot-summary').innerHTML = [
     ['Coverage', `${data.coverage.city}, ${data.coverage.state}`, data.coverage.status],
-    ['Inventory', data.robots.length, `${data.robots.filter((item) => item.sex === 'Man').length} men · ${data.robots.filter((item) => item.sex === 'Woman').length} women`],
+    [
+      'Approved inventory',
+      approvedInventory.length,
+      `${approvedInventory.filter((item) => item.sex === 'Man').length} men · ${approvedInventory.filter((item) => item.sex === 'Woman').length} women${draftCount ? ` · ${draftCount} draft` : ''}`
+    ],
     ['Online now', online.length, `${menOnline} men · ${womenOnline} women`],
     ['AI mode', data.ai.mode === 'LocalOnly' ? 'Local only' : 'Hybrid', data.ai.providerStatus]
   ].map(([label, value, detail]) => `
@@ -221,10 +229,13 @@ function renderRobots(data) {
     </article>
   `).join('');
   $('#robot-list').innerHTML = data.robots.map((robot) => `
-    <article class="admin-table-row">
-      <div><strong>${escapeHtml(robot.displayName)}</strong><span>${escapeHtml(robot.sex)} · ${escapeHtml(data.coverage.city)}</span></div>
-      <div><strong>${robot.online ? 'Online' : 'Off shift'}</strong><span>${robot.shiftEnd ? `Until ${formatTime(robot.shiftEnd)}` : 'No current shift'}</span></div>
-      <div class="row-actions"><span class="robot-state ${robot.online ? 'online' : ''}">${robot.reserve ? 'Reserve' : robot.online ? 'Active' : 'Ready'}</span></div>
+    <article class="admin-table-row ${robot.active ? '' : 'inactive'}">
+      <div><strong>${escapeHtml(robot.displayName)}</strong><span>${escapeHtml(robot.sex)} · ${escapeHtml(robot.city)}</span></div>
+      <div>
+        <strong>${robot.online ? 'Online' : robot.active ? 'Off shift' : 'Inactive draft'}</strong>
+        <span>${robot.shiftEnd ? `Until ${formatTime(robot.shiftEnd)}` : `${escapeHtml(robot.creationSource)} · ${escapeHtml(robot.reviewStatus)}`}</span>
+      </div>
+      <div class="row-actions"><span class="robot-state ${robot.online ? 'online' : ''}">${robot.reserve ? 'Reserve' : robot.online ? 'Active' : robot.active ? 'Ready' : 'Review'}</span></div>
     </article>
   `).join('');
   $('#robot-shift-list').innerHTML = data.shifts.map((shift) => `
@@ -291,6 +302,39 @@ function openEmployeeDialog(employee = null) {
   $('#employee-active-label').classList.toggle('hidden', !employee);
   $('#employee-dialog-title').textContent = employee ? 'Edit employee' : 'Add employee';
   $('#employee-dialog').showModal();
+}
+
+function updateRobotCreationMode() {
+  const form = $('#robot-form');
+  const fullProfile = form.elements.creationMode.value === 'FullProfile';
+  $('#robot-full-fields').classList.toggle('hidden', !fullProfile);
+  $('#robot-mode-guidance').textContent = fullProfile
+    ? 'Complete every profile field. The system derives the birth date from the entered age.'
+    : 'The system will create a complete inactive draft from these required details.';
+  $$('#robot-full-fields input, #robot-full-fields select, #robot-full-fields textarea')
+    .forEach((field) => {
+      field.required = fullProfile && !field.hasAttribute('data-optional');
+    });
+  if (fullProfile && !form.elements.profilePhoto.value) {
+    const suffix = form.elements.sex.value === 'Man'
+      ? 'man'
+      : form.elements.sex.value === 'Woman'
+        ? 'woman'
+        : 'neutral';
+    form.elements.profilePhoto.value = `/assets/profiles/default-${suffix}.svg`;
+  }
+}
+
+function openRobotDialog() {
+  const form = $('#robot-form');
+  form.reset();
+  form.elements.creationMode.value = 'AutoFill';
+  form.elements.sex.value = 'Woman';
+  form.elements.countryCode.value = 'US';
+  form.elements.state.value = 'CA';
+  form.elements.city.value = 'Los Angeles';
+  updateRobotCreationMode();
+  $('#robot-dialog').showModal();
 }
 
 $('#staff-login-form').addEventListener('submit', async (event) => {
@@ -380,6 +424,49 @@ $('#robot-ai-form').addEventListener('submit', async (event) => {
   }
 });
 
+$('#robot-form').addEventListener('change', (event) => {
+  if (event.target.name === 'creationMode') updateRobotCreationMode();
+  if (event.target.name === 'sex' && $('#robot-form').elements.creationMode.value === 'FullProfile') {
+    const photo = $('#robot-form').elements.profilePhoto;
+    if (!photo.value || photo.value.startsWith('/assets/profiles/default-')) {
+      const suffix = event.target.value === 'Man'
+        ? 'man'
+        : event.target.value === 'Woman'
+          ? 'woman'
+          : 'neutral';
+      photo.value = `/assets/profiles/default-${suffix}.svg`;
+    }
+  }
+});
+
+$('#robot-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const body = Object.fromEntries(new FormData(form));
+  body.age = Number(body.age);
+  if (body.creationMode === 'FullProfile') {
+    for (const field of [
+      'languages', 'traits', 'interests', 'movies', 'music', 'goals',
+      'publicPhotos', 'privatePhotos'
+    ]) {
+      body[field] = String(body[field] || '').split(',').map((item) => item.trim()).filter(Boolean);
+    }
+    body.preferredAgeMin = Number(body.preferredAgeMin);
+    body.preferredAgeMax = Number(body.preferredAgeMax);
+  }
+  try {
+    const result = await api('/api/v1/admin/robot-customers', { method: 'POST', body });
+    $('#robot-dialog').close();
+    setStatus(
+      `${result.displayName} created as an inactive ${result.creationMode === 'AutoFill' ? 'auto-filled' : 'full-profile'} robot draft.`,
+      'success'
+    );
+    await loadRobots();
+  } catch (error) {
+    setStatus(error.message, 'error');
+  }
+});
+
 document.addEventListener('submit', async (event) => {
   const form = event.target.closest('[data-policy-form]');
   if (!form) return;
@@ -403,6 +490,7 @@ document.addEventListener('click', async (event) => {
     if (target.id === 'add-employee') return openEmployeeDialog();
     if (target.id === 'add-payment') return $('#payment-dialog').showModal();
     if (target.id === 'add-policy') return $('#policy-dialog').showModal();
+    if (target.id === 'add-robot') return openRobotDialog();
     if (target.id === 'refresh-health') return await loadHealth();
     if (target.id === 'refresh-robots') return await loadRobots();
     if (target.id === 'regenerate-robot-shifts') {

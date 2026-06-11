@@ -208,6 +208,15 @@ test('one robot customer can chat with 10 real customers at the same time', asyn
   const robot = discovery.payload.data.items.find(
     (profile) => profile.customerId === currentRobotId()
   );
+  app.db.prepare(`
+    UPDATE Conversations
+    SET UpdatedAt = ?
+    WHERE CustomerAId = ? OR CustomerBId = ?
+  `).run(
+    new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    robot.customerId,
+    robot.customerId
+  );
 
   const realCustomers = await Promise.all(
     Array.from({ length: 10 }, (_, index) =>

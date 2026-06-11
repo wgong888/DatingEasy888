@@ -150,6 +150,7 @@ input { min-height: 44px; }
 .admin-status { min-height: 22px; margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 800; }
 .admin-status.success { color: var(--green); }
 .admin-status.error { color: #a43f3f; }
+.page-actions { display: flex; align-items: center; gap: 8px; }
 .operation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .operation-item { display: flex; align-items: center; justify-content: space-between; min-height: 58px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 12px; }
 .operation-item:nth-child(2n) { border-right: 0; }
@@ -208,6 +209,11 @@ input { min-height: 44px; }
 .robot-shift-row { grid-template-columns: minmax(0, 0.8fr) minmax(320px, 1fr) auto; }
 .shift-regenerate { display: flex; align-items: center; gap: 7px; }
 .shift-regenerate input { width: 145px; min-height: 34px; padding: 5px 8px; font-size: 10px; }
+.robot-dialog { width: min(760px, calc(100vw - 40px)); }
+.robot-dialog form { max-height: min(850px, calc(100vh - 48px)); overflow-y: auto; }
+.robot-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.robot-full-fields { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 13px; }
+.robot-full-fields textarea { resize: vertical; }
 
 .ceo-shell { min-height: 100vh; }
 .ceo-shell .staff-header { position: sticky; z-index: 10; top: 0; }

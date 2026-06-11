@@ -334,6 +334,34 @@ async function adminFlow(browser) {
   assert.equal(await page.locator('#robot-summary .metric').count(), 4);
   assert.equal(await page.locator('#robot-list .admin-table-row').count(), 8);
   assert.equal(await page.locator('#robot-list .robot-state.online').count(), 2);
+  await page.getByRole('button', { name: 'Add robot customer' }).click();
+  const robotForm = page.locator('#robot-form');
+  await robotForm.locator('[name="creationMode"]').selectOption('FullProfile');
+  await page.locator('#robot-full-fields:not(.hidden)').waitFor();
+  assert.ok(await page.locator('#robot-full-fields [required]').count() >= 10);
+  await page.screenshot({
+    path: path.join(OUTPUT, 'admin-robot-full-profile-dialog.png'),
+    fullPage: true
+  });
+  await robotForm.locator('[name="creationMode"]').selectOption('AutoFill');
+  await page.locator('#robot-full-fields').waitFor({ state: 'hidden' });
+  await robotForm.locator('[name="displayName"]').fill('Browser Taylor');
+  await robotForm.locator('[name="age"]').fill('39');
+  await robotForm.locator('[name="sex"]').selectOption('Woman');
+  await robotForm.locator('[name="countryCode"]').fill('US');
+  await robotForm.locator('[name="state"]').fill('CA');
+  await robotForm.locator('[name="city"]').fill('Los Angeles');
+  await page.screenshot({
+    path: path.join(OUTPUT, 'admin-robot-create-dialog.png'),
+    fullPage: true
+  });
+  await robotForm.getByRole('button', { name: 'Create robot draft' }).click();
+  await page.getByText(/Browser Taylor created as an inactive auto-filled robot draft/).waitFor();
+  const robotDraft = page.locator('#robot-list .admin-table-row', { hasText: 'Browser Taylor' });
+  await robotDraft.waitFor();
+  await robotDraft.getByText('Inactive draft', { exact: true }).waitFor();
+  await robotDraft.getByText(/AdminAssisted · Pending/).waitFor();
+  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 9);
   await page.locator('#robot-ai-form [name="mode"]').selectOption('HybridExternalAllowed');
   await page.locator('#robot-ai-form').getByRole('button', { name: 'Save AI policy' }).click();
   await page.getByText('Robot AI policy updated for every robot.', { exact: true }).waitFor();
