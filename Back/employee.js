@@ -19,13 +19,23 @@ function escapeHtml(value) {
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body) headers['Content-Type'] = 'application/json';
-  const response = await fetch(path, {
-    ...options,
-    credentials: 'same-origin',
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  const payload = await response.json();
+  let response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      credentials: 'same-origin',
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+  } catch {
+    throw new Error('Cannot reach the DatingEasy888 service. Please refresh after the server is running.');
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Request failed with status ${response.status}.`);
+  }
   if (!response.ok || !payload.success) {
     const error = new Error(payload.error?.message || 'Request failed.');
     error.code = payload.error?.code;

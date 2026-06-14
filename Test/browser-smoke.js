@@ -12,12 +12,31 @@ async function customerFlow(browser, viewport, suffix) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
   await page.goto(ORIGIN);
-  await page.locator('#login-form').getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.locator('[data-auth-tab="register"]').click();
+  await page.locator('#register-form:not(.hidden)').waitFor();
+  await page.locator('[data-auth-tab="recovery"]').click();
+  await page.locator('#recovery-form:not(.hidden)').waitFor();
+  await page.locator('[data-auth-tab="login"]').click();
+  await page.locator('#login-form:not(.hidden)').waitFor();
+  if (suffix === 'desktop') {
+    await page.locator('#demo-login').click();
+  } else {
+    await page.locator('#login-form').getByRole('button', { name: 'Sign in', exact: true }).click();
+  }
   await page.locator('#view-messages:not(.hidden)').waitFor();
   await page.getByRole('button', { name: 'Discover', exact: true }).click();
-  await page.locator('.profile-card').first().waitFor();
-  assert.equal(await page.locator('.profile-card').count(), 7);
-  assert.equal(await page.locator('.profile-card', { hasText: /Daniel|Ethan|Lucas|Noah|Marcus|Adrian/ }).count(), 0);
+  await page.locator('#profile-grid .profile-card').first().waitFor();
+  if (suffix === 'mobile') {
+    await page.locator('#menu-button').click();
+    await page.locator('#app-view.nav-open #side-nav').waitFor();
+    await page.locator('#side-nav [data-view="favorites"]').click();
+    await page.locator('#view-favorites:not(.hidden)').waitFor();
+    assert.equal(await page.locator('#app-view.nav-open').count(), 0);
+    await page.locator('.bottom-nav [data-view="discover"]').click();
+    await page.locator('#profile-grid .profile-card').first().waitFor();
+  }
+  assert.equal(await page.locator('#profile-grid .profile-card').count(), 7);
+  assert.equal(await page.locator('#profile-grid .profile-card', { hasText: /Daniel|Ethan|Lucas|Noah|Marcus|Adrian/ }).count(), 0);
   assert.equal(await page.locator('.disclosure').count(), 0);
   assert.equal(await page.getByText(/seed customer|robot customer/i).count(), 0);
   const dimensions = await page.evaluate(() => ({
@@ -130,8 +149,18 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('#credit-balance').filter({ hasText: '235' }).waitFor();
     await page.getByRole('button', { name: 'Discover', exact: true }).click();
     await page.locator('#search-input').fill('Grace');
-    await page.locator('.profile-card', { hasText: 'Grace' }).waitFor();
-    await page.locator('.profile-card', { hasText: 'Grace' }).locator('.profile-photo').click();
+    await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).waitFor();
+    await page.locator('#discover-filter-form').getByRole('button', { name: 'Clear' }).click();
+    await page.locator('#profile-grid .profile-card').first().waitFor();
+    assert.equal(await page.locator('#profile-grid .profile-card').count(), 7);
+    const graceCard = page.locator('#profile-grid .profile-card', { hasText: 'Grace' });
+    await graceCard.locator('.favorite-button').click();
+    await page.getByRole('button', { name: 'Favorites', exact: true }).click();
+    await page.locator('#favorite-grid .profile-card', { hasText: 'Grace' }).waitFor();
+    await page.getByRole('button', { name: 'Discover', exact: true }).click();
+    await page.locator('#search-input').fill('Grace');
+    await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).waitFor();
+    await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).locator('.profile-photo').click();
     await page.locator('#view-profile:not(.hidden)').waitFor();
     await page.getByRole('button', { name: /^Chat with Grace/ }).click();
     await page.locator('[data-composer] textarea').fill(
@@ -143,6 +172,8 @@ async function customerFlow(browser, viewport, suffix) {
     }).waitFor();
     await page.locator('.message.incoming').last().waitFor();
     await page.locator('#credit-balance').filter({ hasText: '230' }).waitFor();
+    await page.locator('#logout-button').click();
+    await page.locator('#auth-view:not(.hidden)').waitFor();
   }
   await context.close();
 }
@@ -208,7 +239,7 @@ async function newCustomerProfileFlow(browser) {
 
   await page.getByRole('button', { name: 'Discover', exact: true }).first().click();
   await page.locator('#view-discover:not(.hidden)').waitFor();
-  await page.locator('.profile-card').first().waitFor();
+  await page.locator('#profile-grid .profile-card').first().waitFor();
   await page.getByRole('button', { name: 'Me', exact: true }).first().click();
   await page.locator('#view-me:not(.hidden)').waitFor();
   assert.equal(await profile.locator('[name="maritalStatus"]').inputValue(), 'Single');
@@ -334,6 +365,8 @@ async function employeeFlow(browser) {
     path: path.join(OUTPUT, 'employee-workspace.png'),
     fullPage: true
   });
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await page.locator('#login-view:not(.hidden)').waitFor();
   await context.close();
   await customerContext.close();
 }
@@ -350,6 +383,33 @@ async function adminFlow(browser) {
     }
   );
   assert.equal(resetResponse.status(), 202);
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const rejectCustomer = await publicContext.request.post(
+    `${ORIGIN}/api/v1/auth/customer/register`,
+    {
+      data: {
+        email: `reject-${suffix}@example.test`,
+        password: 'Original123!',
+        displayName: 'Reject Browser',
+        birthDate: '1987-02-03',
+        sex: 'Woman',
+        countryCode: 'US',
+        state: 'CA',
+        city: 'Los Angeles'
+      }
+    }
+  );
+  assert.equal(rejectCustomer.status(), 201);
+  const rejectReset = await publicContext.request.post(
+    `${ORIGIN}/api/v1/auth/customer/password-reset-requests`,
+    {
+      data: {
+        fullName: 'Reject Browser',
+        contact: `reject-${suffix}@example.test`
+      }
+    }
+  );
+  assert.equal(rejectReset.status(), 202);
   await publicContext.close();
 
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
@@ -379,6 +439,14 @@ async function adminFlow(browser) {
   await pendingReset.waitFor();
   await pendingReset.getByRole('button', { name: 'Approve' }).click();
   await page.getByText(/One-time temporary password:/).waitFor();
+  const rejectableReset = page.locator('[data-reset-row]', { hasText: 'Reject Browser' });
+  await rejectableReset.waitFor();
+  await rejectableReset.getByRole('button', { name: 'Reject' }).click();
+  await page.getByText('Password reset request rejected.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: /Auto approval/ }).click();
+  await page.getByText(/Password reset auto approval enabled/).waitFor();
+  await page.getByRole('button', { name: /Auto approval/ }).click();
+  await page.getByText(/Password reset auto approval disabled/).waitFor();
 
   await page.getByRole('button', { name: 'Employees', exact: true }).click();
   await page.getByRole('button', { name: 'Add employee' }).click();
@@ -440,6 +508,8 @@ async function adminFlow(browser) {
   await page.locator('#robot-ai-form').getByRole('button', { name: 'Save AI policy' }).click();
   await page.getByText('Robot AI policy updated for every robot.', { exact: true }).waitFor();
   assert.ok(await page.locator('#robot-shift-list .robot-shift-row').count() >= 2);
+  await page.getByRole('button', { name: 'Regenerate day' }).click();
+  await page.getByText(/Robot shifts regenerated/).waitFor();
   await page.screenshot({
     path: path.join(OUTPUT, 'admin-robot-operations.png'),
     fullPage: true
@@ -472,6 +542,8 @@ async function adminFlow(browser) {
     path: path.join(OUTPUT, 'admin-dashboard.png'),
     fullPage: true
   });
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await page.locator('#login-view:not(.hidden)').waitFor();
   await context.close();
 }
 
@@ -517,6 +589,10 @@ async function ceoFlow(browser) {
   await page.getByRole('button', { name: 'Deny', exact: true }).click();
   await page.getByText(/payment denied/).waitFor();
   assert.equal(await page.locator('.ceo-approval-row').count(), 1);
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByText('Dashboard refreshed.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await page.locator('#login-view:not(.hidden)').waitFor();
   await context.close();
 }
 

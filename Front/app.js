@@ -18,15 +18,20 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: 'same-origin',
-    headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {})
-    },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      credentials: 'same-origin',
+      headers: {
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {})
+      },
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+  } catch {
+    throw new Error('Cannot reach the DatingEasy888 service. Please refresh after the server is running.');
+  }
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.success) {
     const error = new Error(payload?.error?.message || 'The request failed.');
@@ -153,6 +158,8 @@ function fillProfileEditor() {
 function showApplication() {
   $('#auth-view').classList.add('hidden');
   $('#app-view').classList.remove('hidden');
+  $('#app-view').classList.remove('nav-open');
+  $('#menu-button').setAttribute('aria-expanded', 'false');
   $('#me-name').textContent = state.me.displayName;
   $('#me-title').textContent = `${state.me.displayName}'s profile`;
   $('#me-location').textContent = [state.me.city, state.me.state].filter(Boolean).join(', ');
@@ -532,6 +539,8 @@ function switchView(view, options = {}) {
     view = 'me';
     showToast('Complete your profile before continuing.');
   }
+  $('#app-view').classList.remove('nav-open');
+  $('#menu-button').setAttribute('aria-expanded', 'false');
   state.currentView = view;
   $$('.app-main > .app-view').forEach((section) => section.classList.add('hidden'));
   $(`#view-${view}`).classList.remove('hidden');
@@ -584,6 +593,12 @@ document.addEventListener('click', async (event) => {
     }
     if (target.dataset.conversation) {
       return await openConversation(target.dataset.conversation);
+    }
+    if (target.id === 'menu-button') {
+      const open = !$('#app-view').classList.contains('nav-open');
+      $('#app-view').classList.toggle('nav-open', open);
+      target.setAttribute('aria-expanded', String(open));
+      return;
     }
     if (target.dataset.gift) {
       return await withButtonBusy(target, () => sendGift(target.dataset.gift));
