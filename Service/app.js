@@ -212,6 +212,23 @@ function wordCount(text) {
   return String(text).trim().split(/\s+/u).filter(Boolean).length;
 }
 
+function orientationSexes(lookingFor) {
+  if (lookingFor === 'Women') return ['Woman'];
+  if (lookingFor === 'Men') return ['Man'];
+  return ['Man', 'Woman', 'Nonbinary', 'NotSpecified'];
+}
+
+function parseAgeFilter(value, fallback) {
+  const age = Number.parseInt(String(value || ''), 10);
+  if (!Number.isInteger(age)) return fallback;
+  return Math.min(120, Math.max(18, age));
+}
+
+function parseSexFilter(value) {
+  const sex = String(value || '').trim();
+  return ['Man', 'Woman', 'Nonbinary', 'NotSpecified'].includes(sex) ? sex : '';
+}
+
 function cardTypeFromNumber(value) {
   if (/^4/u.test(value)) return 'VISA';
   if (/^(5[1-5]|2[2-7])/u.test(value)) return 'MASTERCARD';
@@ -1169,8 +1186,25 @@ function createApplication(options = {}) {
 
     if (req.method === 'GET' && pathname === '/api/v1/customer/discovery/profiles') {
       const session = authenticate(db, req, 'Customer');
+      const viewer = getCustomer(db, session.PrincipalId);
       const query = String(searchParams.get('query') || '').trim();
+      const city = String(searchParams.get('city') || '').trim();
+      const requestedSex = parseSexFilter(searchParams.get('sex'));
+      const orientationAllowed = orientationSexes(viewer.GenderLookingFor);
+      const sexFilters = requestedSex
+        ? orientationAllowed.filter((sex) => sex === requestedSex)
+        : orientationAllowed;
+      const minAge = parseAgeFilter(searchParams.get('minAge'), 18);
+      const maxAge = Math.max(minAge, parseAgeFilter(searchParams.get('maxAge'), 120));
+      if (!sexFilters.length) {
+        return json(res, 200, envelope({
+          items: [],
+          page: { limit: 20, nextCursor: null, hasMore: false }
+        }, requestId));
+      }
       const like = `%${query}%`;
+      const cityLike = `%${city}%`;
+      const sexPlaceholders = sexFilters.map(() => '?').join(', ');
       const rows = db.prepare(`
         SELECT p.*,
           EXISTS(
@@ -1179,10 +1213,37 @@ function createApplication(options = {}) {
           ) AS Favorite
         FROM CustomerProfile p
         WHERE p.Active = 1 AND p.CustomerId <> ?
-          AND (? = '' OR p.DisplayName LIKE ? OR p.CityName LIKE ? OR p.Bio LIKE ?)
+          AND p.Sex IN (${sexPlaceholders})
+          AND CAST((julianday('now') - julianday(p.BirthDate)) / 365.2425 AS INTEGER)
+            BETWEEN ? AND ?
+          AND (? = '' OR p.CityName LIKE ?)
+          AND (
+            ? = ''
+            OR p.DisplayName LIKE ?
+            OR p.CityName LIKE ?
+            OR p.Bio LIKE ?
+            OR p.InterestsJson LIKE ?
+            OR p.TraitsJson LIKE ?
+            OR p.GoalsJson LIKE ?
+          )
         ORDER BY p.Seed DESC, p.DisplayName
         LIMIT 20
-      `).all(session.PrincipalId, session.PrincipalId, query, like, like, like);
+      `).all(
+        session.PrincipalId,
+        session.PrincipalId,
+        ...sexFilters,
+        minAge,
+        maxAge,
+        city,
+        cityLike,
+        query,
+        like,
+        like,
+        like,
+        like,
+        like,
+        like
+      );
       return json(res, 200, envelope({
         items: rows.map((row) => normalizeCustomer(row, row.Favorite)),
         page: { limit: 20, nextCursor: null, hasMore: false }

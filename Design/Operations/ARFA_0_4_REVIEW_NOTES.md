@@ -16,6 +16,9 @@ Status: Ready for product-owner review
 - CEO four-panel finance, presence, health, and outgoing-payment approval
 - Same-browser review across customer, employee, administrator, and CEO tabs
   without session overwrite
+- Customer review fixes for Messages-list sending, plain Send button labeling,
+  gift placement below the chat composer, and Discover city/age/sex search
+  constrained by the customer's orientation
 - Headless robot engine with city coverage, eight-hour shift windows,
   same-sex reserve replacement, ten-conversation capacity, local English
   responses, and an administrator-controlled simulated outside-AI mode
@@ -27,7 +30,8 @@ Status: Ready for product-owner review
 - Ten-customer accelerated thirteen-round robot scenario: 130 customer
   messages, 130 robot replies, and exact credit reconciliation
 - Browser smoke coverage for customer desktop/mobile, employee, administrator,
-  robot operations, and CEO screens
+  robot operations, CEO screens, Messages-list sending, and Discover
+  orientation filtering
 
 ## Arfa Boundaries
 The following are not defects in the local prototype and remain Beta work:

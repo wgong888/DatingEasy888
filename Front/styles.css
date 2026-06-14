@@ -205,11 +205,34 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   margin-bottom: 26px;
 }
 .section-heading h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(30px, 4vw, 46px); font-weight: 500; }
+.discover-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(120px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin: -8px 0 24px;
+}
+.discover-filters label {
+  display: grid;
+  gap: 6px;
+  color: #4f4b4f;
+  font-size: 12px;
+  font-weight: 800;
+}
+.discover-filters input, .discover-filters select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #ddd4d1;
+  border-radius: 7px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: white;
+}
 .search-control {
   display: flex;
   align-items: center;
   gap: 9px;
-  width: min(360px, 100%);
+  width: 100%;
   min-height: 46px;
   border: 1px solid #ddd4d1;
   border-radius: 7px;
@@ -511,6 +534,8 @@ dialog::backdrop { background: rgb(29 24 25 / 52%); backdrop-filter: blur(3px); 
   .auth-shell { grid-template-columns: 1fr 1fr; }
   .auth-panel { padding: 40px; }
   .auth-panel .brand-lockup { margin-bottom: 44px; }
+  .discover-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .discover-filters .search-control { grid-column: 1 / -1; }
   .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .messages-layout { grid-template-columns: 280px minmax(0, 1fr); }
 }
@@ -547,7 +572,8 @@ dialog::backdrop { background: rgb(29 24 25 / 52%); backdrop-filter: blur(3px); 
   .bottom-nav .nav-button span { font-size: 20px; }
   .section-heading { align-items: stretch; flex-direction: column; gap: 18px; }
   .section-heading h1 { font-size: 34px; }
-  .search-control { width: 100%; }
+  .discover-filters { grid-template-columns: 1fr 1fr; }
+  .discover-filters .search-control { grid-column: 1 / -1; }
   .profile-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .profile-card-body { padding: 11px; }
   .profile-identity h2 { font-size: 17px; }

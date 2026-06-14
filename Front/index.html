@@ -142,11 +142,31 @@
             <p class="eyebrow">Discover</p>
             <h1>People worth a conversation</h1>
           </div>
+        </div>
+        <form id="discover-filter-form" class="discover-filters" role="search">
           <label class="search-control">
             <span aria-hidden="true">⌕</span>
-            <input id="search-input" type="search" placeholder="Name, city, or interest" aria-label="Search profiles">
+            <input id="search-input" name="query" type="search" placeholder="Name, city, or interest" aria-label="Search profiles">
           </label>
-        </div>
+          <label>City
+            <input name="city" type="search" placeholder="Any city" maxlength="120">
+          </label>
+          <label>Age from
+            <input name="minAge" type="number" min="18" max="120" placeholder="18">
+          </label>
+          <label>Age to
+            <input name="maxAge" type="number" min="18" max="120" placeholder="120">
+          </label>
+          <label>Sex
+            <select name="sex">
+              <option value="">My orientation</option>
+              <option value="Woman">Woman</option>
+              <option value="Man">Man</option>
+              <option value="Nonbinary">Nonbinary</option>
+            </select>
+          </label>
+          <button class="secondary-button" type="reset">Clear</button>
+        </form>
         <div id="profile-grid" class="profile-grid" aria-live="polite"></div>
       </section>
 

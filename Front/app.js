@@ -10,7 +10,8 @@ const state = {
   pendingPrivatePhoto: null,
   selectedCreditPackageId: 2,
   currentView: 'messages',
-  previousListView: 'discover'
+  previousListView: 'discover',
+  discoveryTimer: null
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -148,8 +149,28 @@ function showApplication() {
   $('#app-view').classList.toggle('profile-incomplete', !state.me.profileCompleted);
 }
 
-async function loadProfiles(query = '') {
-  const data = await api(`/api/v1/customer/discovery/profiles?query=${encodeURIComponent(query)}`);
+function discoverFilterParams() {
+  const form = $('#discover-filter-form');
+  const params = new URLSearchParams();
+  if (!form) return params;
+  ['query', 'city', 'minAge', 'maxAge', 'sex'].forEach((name) => {
+    const value = String(form.elements[name]?.value || '').trim();
+    if (value) params.set(name, value);
+  });
+  return params;
+}
+
+function scheduleProfileSearch() {
+  clearTimeout(state.discoveryTimer);
+  state.discoveryTimer = setTimeout(() => {
+    loadProfiles().catch((error) => showToast(error.message));
+  }, 250);
+}
+
+async function loadProfiles() {
+  const params = discoverFilterParams();
+  const suffix = params.toString() ? `?${params}` : '';
+  const data = await api(`/api/v1/customer/discovery/profiles${suffix}`);
   state.profiles = data.items;
   renderProfileGrid($('#profile-grid'), state.profiles, 'No profiles match this search.');
 }
@@ -352,12 +373,12 @@ async function openConversation(conversationId) {
         </div>
       `).join('')}
     </div>
-    ${renderGiftStrip()}
     <form class="composer" data-composer>
       <textarea name="text" maxlength="500" placeholder="Write up to 60 words" aria-label="Message" required></textarea>
-      <button class="primary-button" type="submit">Send · 5</button>
+      <button class="primary-button" type="button" data-send-message>Send</button>
       <div class="composer-meta"><span data-word-count>0 / 60 words</span><span>Balance: ${state.me.creditBalance}</span></div>
     </form>
+    ${renderGiftStrip()}
   `;
   requestAnimationFrame(() => {
     const messages = $('.chat-messages', panel);
@@ -368,11 +389,12 @@ async function openConversation(conversationId) {
 async function sendMessage(form) {
   const text = new FormData(form).get('text').trim();
   if (!text) return;
-  const button = $('button[type=submit]', form);
-  button.disabled = true;
+  const conversationId = state.activeConversationId;
+  const button = $('[data-send-message], button[type=submit]', form);
+  if (button) button.disabled = true;
   try {
     const result = await api(
-      `/api/v1/customer/conversations/${state.activeConversationId}/messages/text`,
+      `/api/v1/customer/conversations/${conversationId}/messages/text`,
       {
         method: 'POST',
         body: { text },
@@ -381,7 +403,8 @@ async function sendMessage(form) {
     );
     setBalance(result.creditBalance);
     form.reset();
-    await Promise.all([openConversation(state.activeConversationId), loadConversations()]);
+    await loadConversations();
+    await openConversation(conversationId);
   } catch (error) {
     if (error.code === 'INSUFFICIENT_CREDITS') {
       showToast('Message not sent. You need at least 5 credits.');
@@ -389,15 +412,16 @@ async function sendMessage(form) {
       throw error;
     }
   } finally {
-    button.disabled = false;
+    if (button) button.disabled = false;
   }
 }
 
 async function sendGift(giftId) {
   const gift = state.gifts.find((item) => item.giftId === Number(giftId));
+  const conversationId = state.activeConversationId;
   try {
     const result = await api(
-      `/api/v1/customer/conversations/${state.activeConversationId}/gifts`,
+      `/api/v1/customer/conversations/${conversationId}/gifts`,
       {
         method: 'POST',
         body: { giftId: Number(giftId) },
@@ -405,7 +429,8 @@ async function sendGift(giftId) {
       }
     );
     setBalance(result.creditBalance);
-    await Promise.all([openConversation(state.activeConversationId), loadConversations()]);
+    await loadConversations();
+    await openConversation(conversationId);
     showToast(`${gift.name} sent`);
   } catch (error) {
     if (error.code === 'INSUFFICIENT_CREDITS') {
@@ -492,7 +517,7 @@ function switchView(view, options = {}) {
   });
   if (options.load === false) return;
   if (view === 'messages') loadConversations().catch((error) => showToast(error.message));
-  if (view === 'discover') loadProfiles($('#search-input').value).catch((error) => showToast(error.message));
+  if (view === 'discover') loadProfiles().catch((error) => showToast(error.message));
   if (view === 'favorites') loadFavorites().catch((error) => showToast(error.message));
   if (view === 'me') loadLedger().catch((error) => showToast(error.message));
   history.replaceState(null, '', `#${view}`);
@@ -542,6 +567,14 @@ document.addEventListener('click', async (event) => {
     showToast(error.message);
   }
 });
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-send-message]');
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  sendMessage(button.closest('[data-composer]')).catch((error) => showToast(error.message));
+}, true);
 
 document.addEventListener('dblclick', (event) => {
   const avatar = event.target.closest('.conversation-item .mini-photo');
@@ -703,11 +736,16 @@ $('#password-change-form').addEventListener('submit', async (event) => {
   }
 });
 
-$('#search-input').addEventListener('input', (event) => {
-  clearTimeout($('#search-input').timer);
-  $('#search-input').timer = setTimeout(() => {
-    loadProfiles(event.target.value).catch((error) => showToast(error.message));
-  }, 250);
+$('#discover-filter-form').addEventListener('input', () => {
+  scheduleProfileSearch();
+});
+
+$('#discover-filter-form').addEventListener('change', () => {
+  scheduleProfileSearch();
+});
+
+$('#discover-filter-form').addEventListener('reset', () => {
+  setTimeout(() => loadProfiles().catch((error) => showToast(error.message)));
 });
 
 document.addEventListener('submit', (event) => {

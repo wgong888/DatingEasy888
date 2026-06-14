@@ -16,7 +16,8 @@ async function customerFlow(browser, viewport, suffix) {
   await page.locator('#view-messages:not(.hidden)').waitFor();
   await page.getByRole('button', { name: 'Discover', exact: true }).click();
   await page.locator('.profile-card').first().waitFor();
-  assert.equal(await page.locator('.profile-card').count(), 13);
+  assert.equal(await page.locator('.profile-card').count(), 7);
+  assert.equal(await page.locator('.profile-card', { hasText: /Daniel|Ethan|Lucas|Noah|Marcus|Adrian/ }).count(), 0);
   assert.equal(await page.locator('.disclosure').count(), 0);
   assert.equal(await page.getByText(/seed customer|robot customer/i).count(), 0);
   const dimensions = await page.evaluate(() => ({
@@ -42,9 +43,15 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('[data-composer] textarea').fill(
       'Your profile made me smile. What is your ideal relaxed weekend?'
     );
-    await page.locator('[data-composer]').getByRole('button', { name: 'Send · 5' }).click();
+    await page.locator('[data-composer]').getByRole('button', { name: 'Send', exact: true }).click();
     await page.locator('.message.outgoing').last().waitFor();
     await page.locator('#credit-balance').filter({ hasText: '245' }).waitFor();
+    const chatOrder = await page.evaluate(() => {
+      const composer = document.querySelector('[data-composer]');
+      const gifts = document.querySelector('.gift-strip');
+      return Boolean(composer && gifts && composer.compareDocumentPosition(gifts) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    assert.equal(chatOrder, true);
     await page.locator('[data-composer] textarea').fill(
       'The Enter key should send this second Arfa message.'
     );
@@ -79,6 +86,21 @@ async function customerFlow(browser, viewport, suffix) {
     await page.getByRole('button', { name: 'Remove favorite' }).waitFor();
     await page.getByRole('button', { name: /Back to messages/ }).click();
     await page.locator('#view-messages:not(.hidden)').waitFor();
+    const reopenedConversation = page.waitForResponse((response) => (
+      response.url().includes('/api/v1/customer/conversations/') &&
+      response.url().endsWith('/messages') &&
+      response.status() === 200
+    ));
+    await page.locator('.conversation-item').first().click();
+    await reopenedConversation;
+    await page.locator('[data-composer] textarea').fill(
+      'I reopened this chat from the Messages list and the Send button works.'
+    );
+    await page.locator('[data-composer]').getByRole('button', { name: 'Send', exact: true }).click();
+    await page.locator('.message.outgoing', {
+      hasText: 'I reopened this chat from the Messages list and the Send button works.'
+    }).waitFor();
+    await page.locator('#credit-balance').filter({ hasText: '235' }).waitFor();
   }
   await context.close();
 }

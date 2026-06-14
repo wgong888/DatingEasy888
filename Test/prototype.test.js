@@ -73,6 +73,18 @@ function currentRobotId(index = 0) {
   `).all(timestamp, timestamp)[index].RobotCustomerId;
 }
 
+function currentRobotIdBySex(sex) {
+  const timestamp = new Date().toISOString();
+  return app.db.prepare(`
+    SELECT RobotCustomerId
+    FROM RobotShiftSchedule
+    WHERE ShiftStatus = 'Active'
+      AND SexSnapshot = ?
+      AND PlannedStartTime <= ? AND PlannedEndTime > ?
+    ORDER BY PlannedStartTime
+  `).get(sex, timestamp, timestamp).RobotCustomerId;
+}
+
 before(start);
 after(stop);
 
@@ -130,7 +142,8 @@ test('customer discovery hides internal customer types', async () => {
     headers: { Cookie: cookie }
   });
   assert.equal(result.response.status, 200);
-  assert.equal(result.payload.data.items.length, 13);
+  assert.equal(result.payload.data.items.length, 7);
+  assert.ok(result.payload.data.items.every((profile) => profile.sex === 'Woman'));
   const assertTypeHidden = (profile) => {
     assert.equal('customerTypeCode' in profile, false);
     assert.equal('customerType' in profile, false);
@@ -151,6 +164,43 @@ test('customer discovery hides internal customer types', async () => {
     headers: { Cookie: cookie }
   });
   conversations.payload.data.items.forEach((item) => assertTypeHidden(item.otherCustomer));
+});
+
+test('customer discovery filters by search, city, age, sex, and orientation', async () => {
+  const cookie = await loginCustomer();
+  const search = await request('/api/v1/customer/discovery/profiles?query=coffee', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(search.response.status, 200);
+  assert.ok(search.payload.data.items.length > 0);
+  assert.ok(search.payload.data.items.every((profile) => profile.sex === 'Woman'));
+
+  const city = await request('/api/v1/customer/discovery/profiles?city=Seattle', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(city.response.status, 200);
+  assert.deepEqual(city.payload.data.items.map((profile) => profile.displayName), ['Lena']);
+
+  const age = await request('/api/v1/customer/discovery/profiles?minAge=41&maxAge=43', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(age.response.status, 200);
+  assert.ok(age.payload.data.items.length > 0);
+  assert.ok(age.payload.data.items.every((profile) => (
+    profile.age >= 41 && profile.age <= 43 && profile.sex === 'Woman'
+  )));
+
+  const requestedWoman = await request('/api/v1/customer/discovery/profiles?sex=Woman', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(requestedWoman.response.status, 200);
+  assert.equal(requestedWoman.payload.data.items.length, 7);
+
+  const requestedMan = await request('/api/v1/customer/discovery/profiles?sex=Man', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(requestedMan.response.status, 200);
+  assert.equal(requestedMan.payload.data.items.length, 0);
 });
 
 test('real customer can chat with another real customer', async () => {
@@ -206,7 +256,7 @@ test('real customer can chat with a robot customer that answers autonomously', a
     headers: { Cookie: cookie }
   });
   const robot = discovery.payload.data.items.find(
-    (profile) => profile.customerId === currentRobotId(1)
+    (profile) => profile.customerId === currentRobotIdBySex('Woman')
   );
   const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
     method: 'POST',
@@ -247,7 +297,7 @@ test('one robot customer can chat with 10 real customers at the same time', asyn
     headers: { Cookie: demoCookie }
   });
   const robot = discovery.payload.data.items.find(
-    (profile) => profile.customerId === currentRobotId()
+    (profile) => profile.customerId === currentRobotIdBySex('Woman')
   );
   app.db.prepare(`
     UPDATE Conversations
@@ -482,7 +532,7 @@ test('conversations between two non-real customers are blocked', async () => {
     headers: { Cookie: cookie }
   });
   const seed = discovery.payload.data.items.find((profile) => profile.displayName === 'Maya');
-  const robot = discovery.payload.data.items.find((profile) => profile.displayName === 'Daniel');
+  const robot = discovery.payload.data.items.find((profile) => profile.displayName === 'Emma');
   assert.throws(() => {
     const [a, b] = [seed.customerId, robot.customerId].sort();
     app.db.prepare(`

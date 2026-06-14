@@ -60,11 +60,13 @@ address may change after reconnecting to Wi-Fi.
 - Add or remove the active chat partner from Favorites in the chat header
 - Messages-first login with newest conversation activity first
 - Own-profile review and editing through Me
-- Discover/search/favorites profile-to-chat navigation
+- Discover/search/favorites profile-to-chat navigation with city, age, sex,
+  and orientation-aware filtering
 - Conversations and five-credit text messages
 - Direct message sending without confirmation dialogs
 - Send messages with the Send button or Enter; Shift+Enter creates a new line
-- In-chat gift panel with atomic credit checks and recipient allocation
+- In-chat gift panel below the message composer with atomic credit checks and
+  recipient allocation
 - Atomic message, balance, and ledger transaction
 - Idempotent message retry protection
 - Working Arfa credit checkout with package selection and masked card metadata
@@ -88,11 +90,12 @@ address may change after reconnecting to Wi-Fi.
 - SQLite prototype database following the approved relational design
 - Automated API and browser smoke tests
 
-The current automated suite contains 37 API/integration tests, including
+The current automated suite contains 38 API/integration tests, including
 explicit real-to-real, real-to-robot, and real-to-seed chat cases plus robot
 shift scheduling, robot failure replacement, administrator robot creation,
-outside-AI policy simulation, same-browser four-role review sessions, and one
-robot customer handling ten real-customer conversations concurrently. It also
+outside-AI policy simulation, same-browser four-role review sessions,
+orientation-aware Discover filtering, and one robot customer handling ten
+real-customer conversations concurrently. It also
 reconciles a real customer's simulated Visa purchase across customer credits,
 charge history, credit ledger, and company income.
 
@@ -129,7 +132,8 @@ npm run reset
 Customer:
 1. Sign in and confirm Messages opens first.
 2. Open Discover, review a profile, then start Chat.
-3. Send a five-credit message and a Flower gift.
+3. Send a five-credit message from the profile chat and from an existing
+   conversation in Messages, then send a Flower gift.
 4. Try a gift that costs more than the remaining balance.
 5. Open Favorites and edit the profile under Me.
 
