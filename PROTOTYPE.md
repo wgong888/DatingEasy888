@@ -54,7 +54,8 @@ address may change after reconnecting to Wi-Fi.
 - Customer-facing profiles hide internal real, seed, and robot classifications
 - Three customer types: real, employee-operated seed, and autonomous robot
 - Enforced real-real, real-seed, and real-robot conversation matrix
-- Immediate prototype robot-customer responses with no employee assignment
+- Immediate prototype robot-customer responses with no employee assignment,
+  including direct chats with non-scheduled robot profiles such as Grace
 - Profile detail and favorites
 - Double-click conversation avatars to open the partner profile
 - Add or remove the active chat partner from Favorites in the chat header
@@ -90,12 +91,12 @@ address may change after reconnecting to Wi-Fi.
 - SQLite prototype database following the approved relational design
 - Automated API and browser smoke tests
 
-The current automated suite contains 38 API/integration tests, including
+The current automated suite contains 39 API/integration tests, including
 explicit real-to-real, real-to-robot, and real-to-seed chat cases plus robot
 shift scheduling, robot failure replacement, administrator robot creation,
 outside-AI policy simulation, same-browser four-role review sessions,
-orientation-aware Discover filtering, and one robot customer handling ten
-real-customer conversations concurrently. It also
+orientation-aware Discover filtering, direct Grace robot chat, and one robot
+customer handling ten real-customer conversations concurrently. It also
 reconciles a real customer's simulated Visa purchase across customer credits,
 charge history, credit ledger, and company income.
 

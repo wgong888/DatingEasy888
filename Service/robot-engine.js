@@ -515,10 +515,11 @@ function generateRobotReply(db, options) {
     conversationId,
     incomingChatRecordId,
     text,
-    timestamp = new Date()
+    timestamp = new Date(),
+    allowOffShift = false
   } = options;
   const runtime = robotRuntimeStatus(db, robot.CustomerId, timestamp);
-  if (!runtime.eligible) {
+  if (!runtime.eligible && !allowOffShift) {
     return { reply: null, reason: 'ROBOT_NOT_ON_SHIFT' };
   }
   if (activeConversationCount(db, robot.CustomerId, timestamp) > ROBOT_MAX_CONVERSATIONS) {

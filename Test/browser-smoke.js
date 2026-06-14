@@ -101,6 +101,21 @@ async function customerFlow(browser, viewport, suffix) {
       hasText: 'I reopened this chat from the Messages list and the Send button works.'
     }).waitFor();
     await page.locator('#credit-balance').filter({ hasText: '235' }).waitFor();
+    await page.getByRole('button', { name: 'Discover', exact: true }).click();
+    await page.locator('#search-input').fill('Grace');
+    await page.locator('.profile-card', { hasText: 'Grace' }).waitFor();
+    await page.locator('.profile-card', { hasText: 'Grace' }).locator('.profile-photo').click();
+    await page.locator('#view-profile:not(.hidden)').waitFor();
+    await page.getByRole('button', { name: /^Chat with Grace/ }).click();
+    await page.locator('[data-composer] textarea').fill(
+      'Hi Grace, I want to keep chatting with you.'
+    );
+    await page.locator('[data-composer]').getByRole('button', { name: 'Send', exact: true }).click();
+    await page.locator('.message.outgoing', {
+      hasText: 'Hi Grace, I want to keep chatting with you.'
+    }).waitFor();
+    await page.locator('.message.incoming').last().waitFor();
+    await page.locator('#credit-balance').filter({ hasText: '230' }).waitFor();
   }
   await context.close();
 }

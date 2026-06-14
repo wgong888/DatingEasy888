@@ -291,6 +291,49 @@ test('real customer can chat with a robot customer that answers autonomously', a
     .run();
 });
 
+test('real customer can keep chatting with Grace even when she is not the scheduled robot', async () => {
+  const cookie = await loginCustomer();
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+  const discovery = await request('/api/v1/customer/discovery/profiles?query=Grace', {
+    headers: { Cookie: cookie }
+  });
+  const grace = discovery.payload.data.items.find((profile) => profile.displayName === 'Grace');
+  assert.ok(grace);
+  assert.notEqual(grace.customerId, currentRobotIdBySex('Woman'));
+
+  const conversation = await request(`/api/v1/customer/conversations/with/${grace.customerId}`, {
+    method: 'POST',
+    headers: { Cookie: cookie }
+  });
+  assert.equal(conversation.response.status, 200);
+
+  const messages = [
+    'Hi Grace, I want to keep chatting with you.',
+    'Tell me something calm about the ocean.'
+  ];
+  for (const [index, text] of messages.entries()) {
+    const sent = await request(
+      `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Idempotency-Key': `grace-direct-chat-${index}` },
+        body: { text }
+      }
+    );
+    assert.equal(sent.response.status, 201);
+    assert.equal(sent.payload.data.robotReply.senderId, grace.customerId);
+    assert.equal(sent.payload.data.robotReply.responseSource, 'RobotLocal');
+  }
+  const stored = app.db.prepare(`
+    SELECT COUNT(*) AS value FROM ChatRecords
+    WHERE ConversationId = ?
+  `).get(conversation.payload.data.conversationId).value;
+  assert.equal(stored, 4);
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+});
+
 test('one robot customer can chat with 10 real customers at the same time', async () => {
   const demoCookie = await loginCustomer();
   const discovery = await request('/api/v1/customer/discovery/profiles', {

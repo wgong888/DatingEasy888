@@ -1476,7 +1476,8 @@ function createApplication(options = {}) {
             conversationId: params.conversationId,
             incomingChatRecordId: chatRecordId,
             text,
-            timestamp: new Date(timestamp)
+            timestamp: new Date(timestamp),
+            allowOffShift: true
           });
           if (generated.reply) {
             const robotReplyTime = new Date(Date.parse(timestamp) + 1).toISOString();
