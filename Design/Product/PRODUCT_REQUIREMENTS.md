@@ -1,8 +1,8 @@
 # DatingEasy888 Product Requirements
 
 ## Product Name
-- Working brand: DatingEasy888
-- Working domain: www.DatingEasy888.com
+- Selected brand: DatingEasy888
+- Selected domain: www.DatingEasy888.com, pending registration
 - Previous screenshot/source brands: Horizon Singles, Best Dates
 - Brand cleanup needed: replace old references in future design and UI work
 

@@ -5,8 +5,12 @@ This file records important decisions so we do not lose context as the design gr
 ## Confirmed
 
 ### Brand
-- Use DatingEasy888 as the working brand.
-- Use www.DatingEasy888.com as the working domain.
+- Use DatingEasy888 as the selected public brand.
+- Use www.DatingEasy888.com as the selected domain, pending registration.
+- DatingEasy.com was already registered when checked through the Verisign
+  `.com` registry on June 11, 2026.
+- DatingEasy888.com had no Verisign `.com` registry record on June 11, 2026,
+  but availability is not guaranteed until registrar checkout completes.
 
 ### Architecture
 - Frontend: HTML/CSS/JavaScript served by Python.
@@ -346,7 +350,8 @@ This file records important decisions so we do not lose context as the design gr
 
 ## Pending
 - Final logo and brand identity.
-- Final domain purchase.
+- Register DatingEasy888.com through a company-controlled registrar account.
+- Complete trademark and confusing-similarity review before public launch.
 - Python frontend framework.
 - ASP.NET Core version.
 - Payment provider.
@@ -385,4 +390,4 @@ This file records important decisions so we do not lose context as the design gr
 
 ## Changed From Earlier Chat Design
 - Old screenshot brands include Horizon Singles and Best Dates.
-- New working brand is DatingEasy888.
+- Selected brand is DatingEasy888.

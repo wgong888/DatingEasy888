@@ -12,7 +12,6 @@
 - Which recommended manual features belong in V1, and which are explicitly post-V1?
 
 ## Product
-- Is DatingEasy888 the final public brand name?
 - Should the site focus on dating, chat, companionship, or broader adult social networking?
 - What countries should launch first?
 - Which languages are needed at launch?

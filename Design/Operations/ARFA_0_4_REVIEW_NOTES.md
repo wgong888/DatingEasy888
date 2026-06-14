@@ -1,6 +1,6 @@
 # Arfa 0.4 Review Notes
 
-Date: June 9, 2026  
+Date: June 11, 2026
 Status: Ready for product-owner review
 
 ## Implemented Review Scope
@@ -14,6 +14,8 @@ Status: Ready for product-owner review
   maintenance, outgoing-payment preparation, health, audit, and robot
   operations
 - CEO four-panel finance, presence, health, and outgoing-payment approval
+- Same-browser review across customer, employee, administrator, and CEO tabs
+  without session overwrite
 - Headless robot engine with city coverage, eight-hour shift windows,
   same-sex reserve replacement, ten-conversation capacity, local English
   responses, and an administrator-controlled simulated outside-AI mode
@@ -21,6 +23,7 @@ Status: Ready for product-owner review
 ## Automated Evidence
 - API, role, financial, scheduler, migration, DST, AI-policy, and concurrency
   tests
+- Same-browser four-role session coexistence regression test
 - Ten-customer accelerated thirteen-round robot scenario: 130 customer
   messages, 130 robot replies, and exact credit reconciliation
 - Browser smoke coverage for customer desktop/mobile, employee, administrator,

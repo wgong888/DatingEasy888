@@ -68,6 +68,16 @@ const PREPARED_REPLIES = [
     text: 'I am listening. We can keep it light or talk about what is really on your mind.'
   }
 ];
+const SESSION_COOKIE_BY_ROLE = Object.freeze({
+  Customer: 'de_customer_session',
+  ChatEmployee: 'de_employee_session',
+  Administrator: 'de_admin_session',
+  CEO: 'de_ceo_session'
+});
+const ALL_SESSION_COOKIES = Object.freeze([
+  ...Object.values(SESSION_COOKIE_BY_ROLE),
+  'de_session'
+]);
 
 class ApiError extends Error {
   constructor(status, code, message, fields = null) {
@@ -88,17 +98,57 @@ function parseCookies(req) {
   return result;
 }
 
-function setSessionCookie(res, token) {
+function sessionCookieName(principalType, role) {
+  if (principalType === 'Customer') return SESSION_COOKIE_BY_ROLE.Customer;
+  return SESSION_COOKIE_BY_ROLE[role] || 'de_session';
+}
+
+function sessionCookieCandidates(expectedType, options = {}) {
+  if (expectedType === 'Customer') {
+    return [SESSION_COOKIE_BY_ROLE.Customer, 'de_session'];
+  }
+  if (expectedType === 'Employee') {
+    if (options.role === 'ChatEmployee') return [SESSION_COOKIE_BY_ROLE.ChatEmployee, 'de_session'];
+    if (options.role === 'CEO') {
+      return [
+        SESSION_COOKIE_BY_ROLE.CEO,
+        SESSION_COOKIE_BY_ROLE.Administrator,
+        SESSION_COOKIE_BY_ROLE.ChatEmployee,
+        'de_session'
+      ];
+    }
+    if (options.roles?.includes('Administrator')) {
+      return [
+        SESSION_COOKIE_BY_ROLE.Administrator,
+        SESSION_COOKIE_BY_ROLE.CEO,
+        SESSION_COOKIE_BY_ROLE.ChatEmployee,
+        'de_session'
+      ];
+    }
+    return [
+      SESSION_COOKIE_BY_ROLE.ChatEmployee,
+      SESSION_COOKIE_BY_ROLE.Administrator,
+      SESSION_COOKIE_BY_ROLE.CEO,
+      'de_session'
+    ];
+  }
+  return ALL_SESSION_COOKIES;
+}
+
+function setSessionCookie(res, token, principalType, role) {
+  const cookieName = sessionCookieName(principalType, role);
   res.setHeader(
     'Set-Cookie',
-    `de_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`
+    `${cookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`
   );
 }
 
-function clearSessionCookie(res) {
+function clearSessionCookies(res) {
   res.setHeader(
     'Set-Cookie',
-    'de_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
+    ALL_SESSION_COOKIES.map((cookieName) => (
+      `${cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+    ))
   );
 }
 
@@ -413,40 +463,74 @@ function createSession(db, principalType, principalId, role) {
 }
 
 function authenticate(db, req, expectedType = null, options = {}) {
-  const sessionId = parseCookies(req).de_session;
-  if (!sessionId) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Please sign in.');
-  const session = db.prepare('SELECT * FROM Sessions WHERE SessionId = ?').get(sessionId);
-  if (!session) throw new ApiError(401, 'SESSION_INVALID', 'Please sign in again.');
+  const cookies = parseCookies(req);
+  let sawCookie = false;
+  let sawInvalid = false;
+  let sawExpired = false;
+  let sawWrongRole = false;
 
-  const current = Date.now();
-  const lastActivity = Date.parse(session.LastActivityTime);
-  const expireTime = Date.parse(session.ExpireTime);
-  const idleLimit =
-    session.PrincipalType === 'Customer' ? CUSTOMER_IDLE_MS : EMPLOYEE_IDLE_MS;
-  if (current >= expireTime || current - lastActivity >= idleLimit) {
-    db.prepare('DELETE FROM Sessions WHERE SessionId = ?').run(sessionId);
-    throw new ApiError(401, 'SESSION_EXPIRED', 'Your session expired. Please sign in again.');
-  }
-  if (expectedType && session.PrincipalType !== expectedType) {
-    throw new ApiError(403, 'FORBIDDEN', 'This account cannot use this area.');
-  }
-  if (session.PrincipalType === 'Customer' && !options.allowPasswordChangeRequired) {
-    const customer = db.prepare(`
-      SELECT MustChangePassword FROM CustomerProfile WHERE CustomerId = ?
-    `).get(session.PrincipalId);
-    if (customer?.MustChangePassword) {
-      throw new ApiError(
-        403,
-        'PASSWORD_CHANGE_REQUIRED',
-        'Change the temporary password before continuing.'
-      );
+  for (const cookieName of sessionCookieCandidates(expectedType, options)) {
+    const sessionId = cookies[cookieName];
+    if (!sessionId) continue;
+    sawCookie = true;
+    const session = db.prepare('SELECT * FROM Sessions WHERE SessionId = ?').get(sessionId);
+    if (!session) {
+      sawInvalid = true;
+      continue;
     }
+
+    const current = Date.now();
+    const lastActivity = Date.parse(session.LastActivityTime);
+    const expireTime = Date.parse(session.ExpireTime);
+    const idleLimit =
+      session.PrincipalType === 'Customer' ? CUSTOMER_IDLE_MS : EMPLOYEE_IDLE_MS;
+    if (current >= expireTime || current - lastActivity >= idleLimit) {
+      db.prepare('DELETE FROM Sessions WHERE SessionId = ?').run(sessionId);
+      sawExpired = true;
+      continue;
+    }
+    if (expectedType && session.PrincipalType !== expectedType) {
+      sawWrongRole = true;
+      continue;
+    }
+    if (options.role && session.Role !== options.role) {
+      sawWrongRole = true;
+      continue;
+    }
+    if (options.roles && !options.roles.includes(session.Role)) {
+      sawWrongRole = true;
+      continue;
+    }
+    if (session.PrincipalType === 'Customer' && !options.allowPasswordChangeRequired) {
+      const customer = db.prepare(`
+        SELECT MustChangePassword FROM CustomerProfile WHERE CustomerId = ?
+      `).get(session.PrincipalId);
+      if (customer?.MustChangePassword) {
+        throw new ApiError(
+          403,
+          'PASSWORD_CHANGE_REQUIRED',
+          'Change the temporary password before continuing.'
+        );
+      }
+    }
+    db.prepare('UPDATE Sessions SET LastActivityTime = ? WHERE SessionId = ?').run(
+      new Date(current).toISOString(),
+      sessionId
+    );
+    return session;
   }
-  db.prepare('UPDATE Sessions SET LastActivityTime = ? WHERE SessionId = ?').run(
-    new Date(current).toISOString(),
-    sessionId
-  );
-  return session;
+
+  if (!sawCookie) throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Please sign in.');
+  if (sawExpired) throw new ApiError(401, 'SESSION_EXPIRED', 'Your session expired. Please sign in again.');
+  if (sawInvalid) throw new ApiError(401, 'SESSION_INVALID', 'Please sign in again.');
+  if (sawWrongRole) {
+    throw new ApiError(
+      403,
+      options.forbiddenCode || 'FORBIDDEN',
+      options.forbiddenMessage || 'This account cannot use this area.'
+    );
+  }
+  throw new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Please sign in.');
 }
 
 function audit(db, actorType, actorId, action, targetType, targetId, detail = {}) {
@@ -468,7 +552,9 @@ function audit(db, actorType, actorId, action, targetType, targetId, detail = {}
 }
 
 function requireAdmin(db, req) {
-  const session = authenticate(db, req, 'Employee');
+  const session = authenticate(db, req, 'Employee', {
+    roles: ['Administrator', 'CEO']
+  });
   if (!['Administrator', 'CEO'].includes(session.Role)) {
     throw new ApiError(403, 'FORBIDDEN', 'Administrator access is required.');
   }
@@ -476,7 +562,11 @@ function requireAdmin(db, req) {
 }
 
 function requireCEO(db, req) {
-  const session = authenticate(db, req, 'Employee');
+  const session = authenticate(db, req, 'Employee', {
+    role: 'CEO',
+    forbiddenCode: 'CEO_APPROVAL_REQUIRED',
+    forbiddenMessage: 'CEO approval access is required.'
+  });
   if (session.Role !== 'CEO') {
     throw new ApiError(403, 'CEO_APPROVAL_REQUIRED', 'CEO approval access is required.');
   }
@@ -641,7 +731,7 @@ function createApplication(options = {}) {
         now(),
         customer.CustomerId
       );
-      setSessionCookie(res, sessionId);
+      setSessionCookie(res, sessionId, 'Customer', 'Customer');
       audit(db, 'Customer', customer.CustomerId, 'CustomerLogin', 'Session', sessionId);
       return json(res, 200, envelope({
         customerId: customer.CustomerId,
@@ -845,7 +935,7 @@ function createApplication(options = {}) {
         throw error;
       }
       const sessionId = createSession(db, 'Customer', customerId, 'Customer');
-      setSessionCookie(res, sessionId);
+      setSessionCookie(res, sessionId, 'Customer', 'Customer');
       audit(db, 'Customer', customerId, 'CustomerRegistered', 'Customer', customerId);
       return json(res, 201, envelope({
         customerId,
@@ -865,7 +955,7 @@ function createApplication(options = {}) {
         throw new ApiError(401, 'LOGIN_FAILED', 'Email or password is incorrect.');
       }
       const sessionId = createSession(db, 'Employee', employee.EmployeeId, employee.Role);
-      setSessionCookie(res, sessionId);
+      setSessionCookie(res, sessionId, 'Employee', employee.Role);
       audit(db, 'Employee', employee.EmployeeId, 'StaffLogin', 'Session', sessionId, {
         role: employee.Role
       });
@@ -877,9 +967,11 @@ function createApplication(options = {}) {
     }
 
     if (req.method === 'POST' && pathname === '/api/v1/auth/logout') {
-      const sessionId = parseCookies(req).de_session;
-      if (sessionId) db.prepare('DELETE FROM Sessions WHERE SessionId = ?').run(sessionId);
-      clearSessionCookie(res);
+      const cookies = parseCookies(req);
+      for (const sessionId of ALL_SESSION_COOKIES.map((cookieName) => cookies[cookieName]).filter(Boolean)) {
+        db.prepare('DELETE FROM Sessions WHERE SessionId = ?').run(sessionId);
+      }
+      clearSessionCookies(res);
       return json(res, 200, envelope({ loggedOut: true }, requestId));
     }
 
@@ -1809,7 +1901,7 @@ function createApplication(options = {}) {
       req.method === 'POST' &&
       (params = matchPath(pathname, '/api/v1/backend/conversations/:conversationId/messages'))
     ) {
-      const session = authenticate(db, req, 'Employee');
+      const session = authenticate(db, req, 'Employee', { role: 'ChatEmployee' });
       if (session.Role !== 'ChatEmployee') {
         throw new ApiError(403, 'FORBIDDEN', 'Employee workspace access is required.');
       }
@@ -1931,7 +2023,7 @@ function createApplication(options = {}) {
     }
 
     if (req.method === 'GET' && pathname === '/api/v1/backend/workspace') {
-      const session = authenticate(db, req, 'Employee');
+      const session = authenticate(db, req, 'Employee', { role: 'ChatEmployee' });
       if (session.Role !== 'ChatEmployee') {
         throw new ApiError(403, 'FORBIDDEN', 'Employee workspace access is required.');
       }

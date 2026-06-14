@@ -1,4 +1,4 @@
-# DatingEasy888 Arfa Version 0.3
+# DatingEasy888 Arfa Version 0.4
 
 This is the completed runnable prototype for product review.
 
@@ -79,6 +79,8 @@ address may change after reconnecting to Wi-Fi.
 - Administrator total/online customer metrics and current-day credits/revenue
 - Customer password-reset request, approval queue, temporary password, and forced change
 - Chat employee, administrator, and CEO account create/edit/remove workflows
+- Role-specific review sessions so customer, employee, administrator, and CEO
+  tabs can remain signed in in the same browser during Arfa review
 - Policy add/edit/enable/disable with version increments
 - Refreshable system health, operation status, and audit activity
 - Four-panel CEO dashboard with period finance, online presence, health, and outgoing-payment decisions
@@ -86,12 +88,13 @@ address may change after reconnecting to Wi-Fi.
 - SQLite prototype database following the approved relational design
 - Automated API and browser smoke tests
 
-The current automated suite contains 26 API/integration tests, including
-explicit real-to-real, real-to-robot, and real-to-seed chat cases plus one
-robot customer handling ten real-customer conversations concurrently and an
-employee seed-notification/newest-first queue case. It also reconciles a real
-customer's simulated Visa purchase across customer credits, charge history,
-credit ledger, and company income.
+The current automated suite contains 37 API/integration tests, including
+explicit real-to-real, real-to-robot, and real-to-seed chat cases plus robot
+shift scheduling, robot failure replacement, administrator robot creation,
+outside-AI policy simulation, same-browser four-role review sessions, and one
+robot customer handling ten real-customer conversations concurrently. It also
+reconciles a real customer's simulated Visa purchase across customer credits,
+charge history, credit ledger, and company income.
 
 ## Deliberately Simulated
 

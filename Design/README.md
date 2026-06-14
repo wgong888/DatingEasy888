@@ -18,6 +18,7 @@ Design/
 │   ├── MARKET_ANALYSIS.md
 │   ├── ONLINE_REFRESH_AND_PROFILE_REQUEST_POLICY.md
 │   ├── PRODUCT_OPERATING_MODEL.md
+│   ├── SEED_ROBOT_PHOTO_PRODUCTION_BRIEF.md
 │   ├── SEED_CHAT_VALUE_POLICY.md
 │   ├── SEED_PROFILE_GENERATION_POLICY.md
 │   └── USER_FLOWS.md
@@ -58,8 +59,10 @@ Design/
 │   ├── countries_states_cities.json   # Top 30 countries with cities
 │   └── dropdown_constants.json        # All form dropdown options
 ├── ARCHITECTURE.md                    # System architecture overview
+├── CHAT_TO_CODEX_HANDOFF.md           # Continuation baseline and transferred assets
 ├── DECISIONS.md                       # Confirmed and pending decisions
 ├── OPEN_QUESTIONS.md                  # Questions to answer before build
+├── REFERENCE_ASSET_INVENTORY.md        # Screenshot/recording purpose and restrictions
 ├── plan.md                            # Project overview & phases
 └── README.md                          # This file
 ```

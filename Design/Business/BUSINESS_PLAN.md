@@ -148,11 +148,14 @@ is therefore both a compliance requirement and a brand advantage.
 
 ## 7. Brand Strategy
 
-Working brand: `DatingEasy888`.
+Selected brand: `DatingEasy888`.
+
+Selected domain: `DatingEasy888.com`, pending registration. `DatingEasy.com`
+was already registered when checked on June 11, 2026.
 
 Before public use:
 
-- Check domain ownership and alternatives.
+- Register the selected domain through a company-controlled account.
 - Conduct trademark and confusing-similarity review.
 - Test whether `888` helps trust or makes the brand look promotional.
 - Test `DatingEasy` against names emphasizing conversation or companionship.

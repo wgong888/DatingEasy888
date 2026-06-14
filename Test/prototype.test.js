@@ -52,6 +52,16 @@ async function loginCustomer() {
   return result.cookie;
 }
 
+async function loginStaff(email) {
+  const result = await request('/api/v1/auth/staff/login', {
+    method: 'POST',
+    body: { email, password: 'Demo123!' }
+  });
+  assert.equal(result.response.status, 200);
+  assert.ok(result.cookie);
+  return result.cookie;
+}
+
 function currentRobotId(index = 0) {
   const timestamp = new Date().toISOString();
   return app.db.prepare(`
@@ -81,6 +91,37 @@ test('customer login returns the durable opening balance', async () => {
   assert.equal(me.response.status, 200);
   assert.equal(me.payload.data.creditBalance, 250);
   assert.equal(me.payload.data.displayName, 'Alex');
+});
+
+test('customer, employee, administrator, and CEO review sessions can coexist', async () => {
+  const cookies = [
+    await loginCustomer(),
+    await loginStaff('operator@datingeasy.test'),
+    await loginStaff('admin@datingeasy.test'),
+    await loginStaff('ceo@datingeasy.test')
+  ].join('; ');
+
+  const me = await request('/api/v1/customer/me', { headers: { Cookie: cookies } });
+  assert.equal(me.response.status, 200);
+  assert.equal(me.payload.data.displayName, 'Alex');
+
+  const workspace = await request('/api/v1/backend/workspace', {
+    headers: { Cookie: cookies }
+  });
+  assert.equal(workspace.response.status, 200);
+  assert.equal(workspace.payload.data.employee.role, 'ChatEmployee');
+
+  const admin = await request('/api/v1/admin/dashboard', {
+    headers: { Cookie: cookies }
+  });
+  assert.equal(admin.response.status, 200);
+  assert.ok(admin.payload.data.metrics.realCustomers.total >= 1);
+
+  const ceo = await request('/api/v1/ceo/dashboard', {
+    headers: { Cookie: cookies }
+  });
+  assert.equal(ceo.response.status, 200);
+  assert.ok(ceo.payload.data.finance);
 });
 
 test('customer discovery hides internal customer types', async () => {

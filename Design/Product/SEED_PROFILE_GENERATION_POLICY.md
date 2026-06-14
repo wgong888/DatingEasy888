@@ -17,6 +17,8 @@ Every seed profile must be:
 DatingEasy888 must not:
 - Copy a profile from another dating or adult-social website
 - Download or reuse another person's photos without explicit commercial rights and model consent
+- Use screenshots from reference products, including `ScreenCopy/docphotos/`,
+  as seed or robot profile photos or as image-to-image lookalike inputs
 - Slightly edit a real person's face, body, background, clothing, name, age, location, or biography to create a seed
 - Paraphrase another person's biography while preserving its recognizable expression or personal story
 - Scrape profiles, photos, messages, or personal data for seed generation
@@ -118,6 +120,8 @@ Photo rules:
 - All three photos must depict the same generated or licensed identity.
 - Apparent age, face, body characteristics, and biography must be consistent.
 - Profile/discovery photos must be non-explicit.
+- Reference-product nude or sexually suggestive screenshots may not be used as
+  seed or robot publication photos.
 - No copied background containing another person's home, workplace, children, documents, license plate, or identifying information.
 - No celebrity, public figure, customer, employee, or recognizable real-person resemblance.
 - Approved publication derivatives use JPG or PNG only.
