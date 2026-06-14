@@ -20,7 +20,17 @@
 html { min-width: 320px; background: var(--canvas); }
 body { margin: 0; min-height: 100vh; color: var(--ink); background: var(--canvas); }
 button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
+button {
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease,
+    transform 80ms ease;
+}
+button:active, button.is-pressed { transform: translateY(1px) scale(0.99); }
+button.is-loading, button:disabled { cursor: wait; opacity: 0.68; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 3px solid rgb(35 125 121 / 28%);
   outline-offset: 2px;
@@ -104,6 +114,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .primary-button { border: 1px solid var(--coral); color: white; background: var(--coral); }
 .primary-button:hover { background: var(--coral-dark); border-color: var(--coral-dark); }
 .secondary-button { border: 1px solid #d8cfcc; color: var(--ink); background: white; }
+.secondary-button:hover { border-color: #bfb4b0; background: #fff9f6; }
 .text-button { border: 0; color: var(--teal); background: transparent; }
 .form-note { margin: 0; color: var(--muted); font-size: 13px; }
 .form-error { min-height: 20px; color: var(--danger); font-weight: 700; }
@@ -300,6 +311,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .favorite-button.active { color: white; border-color: var(--coral); background: var(--coral); }
 .list-empty { grid-column: 1 / -1; padding: 60px 20px; border: 1px dashed #d8cfcc; color: var(--muted); text-align: center; }
 .list-empty h2 { margin: 0 0 8px; color: var(--ink); font-size: 20px; }
+.panel-loading { display: grid; place-items: center; min-height: 240px; color: var(--muted); text-align: center; }
+.panel-loading::before {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 12px;
+  border: 3px solid #f0dfda;
+  border-top-color: var(--coral);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+  content: "";
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .messages-layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); min-height: 610px; border: 1px solid var(--line); background: white; }
 .conversation-list { border-right: 1px solid var(--line); }
@@ -317,6 +341,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   text-align: left;
 }
 .conversation-item.active { background: #fff4f0; }
+.conversation-item.is-loading { background: #fff8f5; }
 .mini-photo, .chat-photo {
   border-radius: 50%;
   background-image: var(--photo);
@@ -581,8 +606,46 @@ dialog::backdrop { background: rgb(29 24 25 / 52%); backdrop-filter: blur(3px); 
   .disclosure { font-size: 9px; }
   .messages-layout { display: block; min-height: 0; border: 0; }
   .conversation-list { border: 1px solid var(--line); }
-  .conversation-panel { position: fixed; z-index: 40; inset: 62px 0 0; background: white; }
+  .conversation-panel {
+    position: fixed;
+    z-index: 40;
+    inset: 62px 0 0;
+    height: calc(100dvh - 62px);
+    overflow: hidden;
+    background: white;
+  }
   .conversation-panel.empty-state { display: none; }
+  .chat-header { min-height: 60px; padding: 8px 12px; }
+  .chat-photo { width: 42px; height: 42px; }
+  .chat-person { min-width: 0; }
+  .chat-person strong { overflow: hidden; max-width: 180px; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+  .chat-favorite, .chat-header .icon-button { width: 48px; height: 48px; }
+  .chat-messages { min-height: 0; padding: 14px 12px; }
+  .message { max-width: 86%; padding: 10px 12px; font-size: 15px; }
+  .composer {
+    grid-template-columns: minmax(0, 1fr) 82px;
+    gap: 8px;
+    padding: 10px;
+    background: white;
+  }
+  .composer textarea {
+    min-height: 54px;
+    max-height: 96px;
+    font-size: 16px;
+  }
+  .composer .primary-button { min-height: 54px; padding: 0 12px; }
+  .composer-meta { font-size: 10px; }
+  .gift-strip { padding: 8px 10px 10px; }
+  .gift-strip-heading { margin-bottom: 6px; }
+  .gift-list {
+    grid-auto-flow: column;
+    grid-auto-columns: 74px;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+  .gift-button { min-height: 58px; scroll-snap-align: start; }
   .account-layout { grid-template-columns: 1fr; }
   .account-summary { padding: 0 0 24px; border-right: 0; border-bottom: 1px solid var(--line); }
   .photo-editor { grid-template-columns: 100px minmax(0, 1fr); }

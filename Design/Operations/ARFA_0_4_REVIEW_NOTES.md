@@ -19,6 +19,8 @@ Status: Ready for product-owner review
 - Customer review fixes for Messages-list sending, plain Send button labeling,
   gift placement below the chat composer, and Discover city/age/sex search
   constrained by the customer's orientation
+- Customer UI responsiveness pass with immediate button feedback, loading
+  placeholders, and phone-sized chat send coverage
 - Direct customer-to-robot chats now reply immediately for selected robot
   profiles such as Grace, even when that robot is not the scheduled city
   coverage profile
@@ -34,8 +36,8 @@ Status: Ready for product-owner review
 - Ten-customer accelerated thirteen-round robot scenario: 130 customer
   messages, 130 robot replies, and exact credit reconciliation
 - Browser smoke coverage for customer desktop/mobile, employee, administrator,
-  robot operations, CEO screens, Messages-list sending, and Discover
-  orientation filtering
+  robot operations, CEO screens, Messages-list sending, mobile chat sending,
+  and Discover orientation filtering
 
 ## Arfa Boundaries
 The following are not defects in the local prototype and remain Beta work:

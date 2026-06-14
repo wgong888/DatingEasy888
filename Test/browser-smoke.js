@@ -38,6 +38,33 @@ async function customerFlow(browser, viewport, suffix) {
     path: path.join(OUTPUT, `customer-profile-${suffix}.png`),
     fullPage: true
   });
+  if (suffix === 'mobile') {
+    await page.getByRole('button', { name: /^Chat with / }).click();
+    await page.locator('.conversation-panel:not(.empty-state)').waitFor();
+    await page.locator('[data-composer] textarea').fill(
+      'Mobile chat should be easy to send.'
+    );
+    await page.locator('[data-composer]').getByRole('button', { name: 'Send', exact: true }).click();
+    await page.locator('.message.outgoing', {
+      hasText: 'Mobile chat should be easy to send.'
+    }).waitFor();
+    const chatDimensions = await page.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+      sendHeight: document.querySelector('[data-send-message]').getBoundingClientRect().height,
+      textHeight: document.querySelector('[data-composer] textarea').getBoundingClientRect().height
+    }));
+    assert.ok(
+      chatDimensions.width <= chatDimensions.viewport,
+      `customer ${suffix} chat overflows: ${chatDimensions.width} > ${chatDimensions.viewport}`
+    );
+    assert.ok(chatDimensions.sendHeight >= 48, 'mobile Send button should be easy to tap');
+    assert.ok(chatDimensions.textHeight >= 48, 'mobile chat input should be easy to tap');
+    await page.screenshot({
+      path: path.join(OUTPUT, 'customer-chat-mobile.png'),
+      fullPage: true
+    });
+  }
   if (suffix === 'desktop') {
     await page.getByRole('button', { name: /^Chat with / }).click();
     await page.locator('[data-composer] textarea').fill(
@@ -80,7 +107,7 @@ async function customerFlow(browser, viewport, suffix) {
       path: path.join(OUTPUT, 'customer-chat-desktop.png'),
       fullPage: true
     });
-    await page.locator('.conversation-item.active .mini-photo').dblclick();
+    await page.locator('.conversation-item.active .mini-photo').click();
     await page.locator('#view-profile:not(.hidden)').waitFor();
     assert.equal(await page.locator('#view-profile .disclosure').count(), 0);
     await page.getByRole('button', { name: 'Remove favorite' }).waitFor();

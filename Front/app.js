@@ -49,6 +49,26 @@ function showToast(message) {
   showToast.timer = setTimeout(() => toast.classList.remove('show'), 2800);
 }
 
+function pulseButton(button) {
+  if (!button || button.disabled) return;
+  button.classList.add('is-pressed');
+  clearTimeout(button.pressTimer);
+  button.pressTimer = setTimeout(() => button.classList.remove('is-pressed'), 160);
+}
+
+async function withButtonBusy(button, action) {
+  if (!button) return await action();
+  if (button.disabled) return null;
+  button.classList.add('is-loading');
+  button.disabled = true;
+  try {
+    return await action();
+  } finally {
+    button.disabled = false;
+    button.classList.remove('is-loading');
+  }
+}
+
 function setBalance(value) {
   if (!state.me) state.me = {};
   state.me.creditBalance = value;
@@ -217,10 +237,12 @@ function findKnownProfile(customerId) {
 }
 
 async function openProfile(customerId) {
-  const profile = await api(`/api/v1/customer/profiles/${customerId}`);
   state.previousListView = ['messages', 'favorites'].includes(state.currentView)
     ? state.currentView
     : 'discover';
+  $('#profile-page').innerHTML = '<div class="panel-loading">Opening profile…</div>';
+  switchView('profile', { load: false });
+  const profile = await api(`/api/v1/customer/profiles/${customerId}`);
   $('#profile-page').innerHTML = `
     <button class="back-link" type="button" data-back-profile>‹ Back to ${state.previousListView}</button>
     <article class="profile-page-layout">
@@ -259,7 +281,6 @@ async function openProfile(customerId) {
       </div>
     </article>
   `;
-  switchView('profile', { load: false });
 }
 
 async function toggleFavorite(customerId) {
@@ -345,12 +366,14 @@ function renderGiftStrip() {
 }
 
 async function openConversation(conversationId) {
-  const data = await api(`/api/v1/customer/conversations/${conversationId}/messages`);
   state.activeConversationId = conversationId;
-  state.activeChatPartner = data.otherCustomer;
   renderConversationList();
   const panel = $('#conversation-panel');
   panel.classList.remove('empty-state');
+  panel.innerHTML = '<div class="panel-loading">Opening conversation…</div>';
+  const data = await api(`/api/v1/customer/conversations/${conversationId}/messages`);
+  state.activeChatPartner = data.otherCustomer;
+  renderConversationList();
   panel.innerHTML = `
     <header class="chat-header">
       <button class="icon-button mobile-only" type="button" data-close-chat aria-label="Back to conversations" title="Back">‹</button>
@@ -531,20 +554,44 @@ function setAuthTab(tab) {
   $('#auth-error').textContent = '';
 }
 
+document.addEventListener('click', (event) => {
+  pulseButton(event.target.closest('button'));
+}, true);
+
 document.addEventListener('click', async (event) => {
+  const avatar = event.target.closest('.conversation-item .mini-photo');
+  if (avatar) {
+    event.preventDefault();
+    event.stopPropagation();
+    const conversation = avatar.closest('.conversation-item');
+    await openProfile(conversation.dataset.customer);
+    return;
+  }
   const target = event.target.closest('button, [data-open-credits]');
   if (!target) return;
   try {
     if (target.dataset.authTab) return setAuthTab(target.dataset.authTab);
     if (target.dataset.view) return switchView(target.dataset.view);
-    if (target.dataset.profile) return await openProfile(target.dataset.profile);
+    if (target.dataset.profile) {
+      return await withButtonBusy(target, () => openProfile(target.dataset.profile));
+    }
     if (target.dataset.backProfile !== undefined) return switchView(state.previousListView);
-    if (target.dataset.favorite) return await toggleFavorite(target.dataset.favorite);
-    if (target.dataset.message) return await startConversation(target.dataset.message);
-    if (target.dataset.conversation) return await openConversation(target.dataset.conversation);
-    if (target.dataset.gift) return await sendGift(target.dataset.gift);
+    if (target.dataset.favorite) {
+      return await withButtonBusy(target, () => toggleFavorite(target.dataset.favorite));
+    }
+    if (target.dataset.message) {
+      return await withButtonBusy(target, () => startConversation(target.dataset.message));
+    }
+    if (target.dataset.conversation) {
+      return await openConversation(target.dataset.conversation);
+    }
+    if (target.dataset.gift) {
+      return await withButtonBusy(target, () => sendGift(target.dataset.gift));
+    }
     if (target.dataset.selectPackage) return selectCreditPackage(target.dataset.selectPackage);
-    if (target.matches('[data-open-credits]') || target.id === 'credits-button') return await openCredits();
+    if (target.matches('[data-open-credits]') || target.id === 'credits-button') {
+      return await withButtonBusy(target, () => openCredits());
+    }
     if (target.matches('[data-close-dialog]')) return target.closest('dialog').close();
     if (target.matches('[data-close-chat]')) {
       state.activeConversationId = null;
@@ -558,10 +605,12 @@ document.addEventListener('click', async (event) => {
       return $('#login-form').requestSubmit();
     }
     if (target.id === 'logout-button') {
-      await api('/api/v1/auth/logout', { method: 'POST' });
-      state.me = null;
-      showAuthentication();
-      showToast('Signed out');
+      return await withButtonBusy(target, async () => {
+        await api('/api/v1/auth/logout', { method: 'POST' });
+        state.me = null;
+        showAuthentication();
+        showToast('Signed out');
+      });
     }
   } catch (error) {
     showToast(error.message);
@@ -579,6 +628,8 @@ document.addEventListener('click', (event) => {
 document.addEventListener('dblclick', (event) => {
   const avatar = event.target.closest('.conversation-item .mini-photo');
   if (!avatar) return;
+  event.preventDefault();
+  event.stopPropagation();
   const conversation = avatar.closest('.conversation-item');
   openProfile(conversation.dataset.customer).catch((error) => showToast(error.message));
 });
@@ -586,85 +637,93 @@ document.addEventListener('dblclick', (event) => {
 $('#login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('#auth-error').textContent = '';
-  const body = Object.fromEntries(new FormData(event.currentTarget));
-  try {
-    const login = await api('/api/v1/auth/customer/login', { method: 'POST', body });
-    state.me = await api('/api/v1/customer/me');
-    showApplication();
-    await Promise.all([loadConversations(), loadGifts()]);
-    switchView(
-      login.mustChangePassword || login.mustCompleteProfile ? 'me' : 'messages',
-      { load: false }
-    );
-    if (login.mustChangePassword) showToast('Choose a new password to continue securely.');
-    if (login.mustCompleteProfile) showToast('Complete your profile to begin.');
-  } catch (error) {
-    $('#auth-error').textContent = error.message;
-  }
+  await withButtonBusy(event.submitter, async () => {
+    const body = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      const login = await api('/api/v1/auth/customer/login', { method: 'POST', body });
+      state.me = await api('/api/v1/customer/me');
+      showApplication();
+      await Promise.all([loadConversations(), loadGifts()]);
+      switchView(
+        login.mustChangePassword || login.mustCompleteProfile ? 'me' : 'messages',
+        { load: false }
+      );
+      if (login.mustChangePassword) showToast('Choose a new password to continue securely.');
+      if (login.mustCompleteProfile) showToast('Complete your profile to begin.');
+    } catch (error) {
+      $('#auth-error').textContent = error.message;
+    }
+  });
 });
 
 $('#recovery-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('#auth-error').textContent = '';
-  try {
-    const result = await api('/api/v1/auth/customer/password-reset-requests', {
-      method: 'POST',
-      body: Object.fromEntries(new FormData(event.currentTarget))
-    });
-    setAuthTab('login');
-    $('#auth-error').textContent = result.status === 'AutoApproved'
-      ? 'A temporary password was sent through the selected contact channel.'
-      : 'Your request was received and is waiting for administrator approval.';
-  } catch (error) {
-    $('#auth-error').textContent = error.message;
-  }
+  await withButtonBusy(event.submitter, async () => {
+    try {
+      const result = await api('/api/v1/auth/customer/password-reset-requests', {
+        method: 'POST',
+        body: Object.fromEntries(new FormData(event.currentTarget))
+      });
+      setAuthTab('login');
+      $('#auth-error').textContent = result.status === 'AutoApproved'
+        ? 'A temporary password was sent through the selected contact channel.'
+        : 'Your request was received and is waiting for administrator approval.';
+    } catch (error) {
+      $('#auth-error').textContent = error.message;
+    }
+  });
 });
 
 $('#register-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   $('#auth-error').textContent = '';
-  const body = Object.fromEntries(new FormData(event.currentTarget));
-  try {
-    await api('/api/v1/auth/customer/register', { method: 'POST', body });
-    state.me = await api('/api/v1/customer/me');
-    showApplication();
-    await Promise.all([loadConversations(), loadGifts()]);
-    switchView('me', { load: false });
-    showToast('Your account is ready. Complete your profile to begin.');
-  } catch (error) {
-    $('#auth-error').textContent = error.message;
-  }
+  await withButtonBusy(event.submitter, async () => {
+    const body = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      await api('/api/v1/auth/customer/register', { method: 'POST', body });
+      state.me = await api('/api/v1/customer/me');
+      showApplication();
+      await Promise.all([loadConversations(), loadGifts()]);
+      switchView('me', { load: false });
+      showToast('Your account is ready. Complete your profile to begin.');
+    } catch (error) {
+      $('#auth-error').textContent = error.message;
+    }
+  });
 });
 
 $('#profile-edit-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  try {
-    const formData = new FormData(event.currentTarget);
-    const body = Object.fromEntries(formData);
-    body.languages = String(body.languages || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    $$('[data-choice]', event.currentTarget).forEach((group) => {
-      body[group.dataset.choice] = $$('input:checked', group).map((input) => input.value);
-    });
-    body.preferredAgeMin = Number(body.preferredAgeMin);
-    body.preferredAgeMax = Number(body.preferredAgeMax);
-    body.profilePhoto = state.pendingProfilePhoto || state.me.profilePhoto;
-    body.publicPhotos = [body.profilePhoto];
-    body.privatePhotos = state.pendingPrivatePhoto ? [state.pendingPrivatePhoto] : [];
-    body.completeProfile = !state.me.profileCompleted;
-    const updated = await api('/api/v1/customer/me', {
-      method: 'PATCH',
-      body
-    });
-    Object.assign(state.me, updated);
-    showApplication();
-    switchView('me', { load: false });
-    showToast(state.me.profileCompleted ? 'Profile saved' : 'Profile progress saved');
-  } catch (error) {
-    showToast(error.message);
-  }
+  await withButtonBusy(event.submitter, async () => {
+    try {
+      const formData = new FormData(event.currentTarget);
+      const body = Object.fromEntries(formData);
+      body.languages = String(body.languages || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      $$('[data-choice]', event.currentTarget).forEach((group) => {
+        body[group.dataset.choice] = $$('input:checked', group).map((input) => input.value);
+      });
+      body.preferredAgeMin = Number(body.preferredAgeMin);
+      body.preferredAgeMax = Number(body.preferredAgeMax);
+      body.profilePhoto = state.pendingProfilePhoto || state.me.profilePhoto;
+      body.publicPhotos = [body.profilePhoto];
+      body.privatePhotos = state.pendingPrivatePhoto ? [state.pendingPrivatePhoto] : [];
+      body.completeProfile = !state.me.profileCompleted;
+      const updated = await api('/api/v1/customer/me', {
+        method: 'PATCH',
+        body
+      });
+      Object.assign(state.me, updated);
+      showApplication();
+      switchView('me', { load: false });
+      showToast(state.me.profileCompleted ? 'Profile saved' : 'Profile progress saved');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
 });
 
 async function resizeProfilePhoto(file) {
@@ -722,18 +781,20 @@ $$('[data-choice]').forEach((group) => {
 
 $('#password-change-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  try {
-    await api('/api/v1/customer/me/password', {
-      method: 'POST',
-      body: Object.fromEntries(new FormData(event.currentTarget))
-    });
-    event.currentTarget.reset();
-    state.me.mustChangePassword = false;
-    $('#password-required').classList.add('hidden');
-    showToast('Password changed.');
-  } catch (error) {
-    showToast(error.message);
-  }
+  await withButtonBusy(event.submitter, async () => {
+    try {
+      await api('/api/v1/customer/me/password', {
+        method: 'POST',
+        body: Object.fromEntries(new FormData(event.currentTarget))
+      });
+      event.currentTarget.reset();
+      state.me.mustChangePassword = false;
+      $('#password-required').classList.add('hidden');
+      showToast('Password changed.');
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
 });
 
 $('#discover-filter-form').addEventListener('input', () => {

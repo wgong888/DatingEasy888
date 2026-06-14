@@ -66,6 +66,8 @@ address may change after reconnecting to Wi-Fi.
 - Conversations and five-credit text messages
 - Direct message sending without confirmation dialogs
 - Send messages with the Send button or Enter; Shift+Enter creates a new line
+- Immediate button press/busy feedback for slower customer actions
+- Phone-sized chat layout with easy-tap composer and Send button
 - In-chat gift panel below the message composer with atomic credit checks and
   recipient allocation
 - Atomic message, balance, and ledger transaction
