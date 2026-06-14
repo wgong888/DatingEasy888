@@ -84,6 +84,7 @@ address may change after reconnecting to Wi-Fi.
 - Administrator total/online customer metrics and current-day credits/revenue
 - Customer password-reset request, approval queue, temporary password, and forced change
 - Chat employee, administrator, and CEO account create/edit/remove workflows
+- Employee profiles capture sex, birth day, phone number, address, and education
 - Role-specific review sessions so customer, employee, administrator, and CEO
   tabs can remain signed in in the same browser during Arfa review
 - Administrator robot creation with country, state/province, and city dropdowns

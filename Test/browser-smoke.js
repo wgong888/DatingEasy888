@@ -384,14 +384,22 @@ async function adminFlow(browser) {
   await page.getByRole('button', { name: 'Add employee' }).click();
   await page.locator('#employee-form [name="displayName"]').fill('Browser Operator');
   await page.locator('#employee-form [name="email"]').fill('browser-operator@example.test');
+  await page.locator('#employee-form [name="sex"]').selectOption('NotSpecified');
+  await page.locator('#employee-form [name="birthDate"]').fill('1991-02-03');
+  await page.locator('#employee-form [name="phone"]').fill('+1-213-555-0901');
+  await page.locator('#employee-form [name="address"]').fill('500 Browser Staff Lane, Los Angeles, CA');
+  await page.locator('#employee-form [name="education"]').fill('Browser operations training');
   await page.locator('#employee-form [name="role"]').selectOption('ChatEmployee');
   await page.locator('#employee-form').getByRole('button', { name: 'Save employee' }).click();
   const employeeRow = page.locator('.admin-table-row', { hasText: 'Browser Operator' });
   await employeeRow.waitFor();
   await employeeRow.getByRole('button', { name: 'Edit' }).click();
   await page.locator('#employee-form [name="displayName"]').fill('Browser Operator Edited');
+  await page.locator('#employee-form [name="phone"]').fill('+1-213-555-0902');
+  await page.locator('#employee-form [name="education"]').fill('Edited browser operations training');
   await page.locator('#employee-form').getByRole('button', { name: 'Save employee' }).click();
   await page.getByText('Browser Operator Edited', { exact: true }).waitFor();
+  await page.getByText('Edited browser operations training').waitFor();
 
   await page.getByRole('button', { name: 'Robot operations', exact: true }).click();
   await page.locator('#robot-summary .metric').first().waitFor();

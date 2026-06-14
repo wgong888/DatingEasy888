@@ -162,6 +162,7 @@ function openDatabase(databasePath = DEFAULT_DB_PATH) {
   const db = new DatabaseSync(databasePath);
   db.exec(fs.readFileSync(path.join(ROOT, 'Database', 'schema.sql'), 'utf8'));
   migrateCustomerProfile(db);
+  migrateEmployeeProfile(db);
   migrateChargeRecord(db);
   seedDatabase(db);
   ensureRobotPrototypeData(db);
@@ -231,6 +232,32 @@ function migrateCustomerProfile(db) {
         ProfileCompleted = 1,
         ProfileCompleteness = 100
     WHERE Seed <> 0 OR EmailNormalized = 'demo@datingeasy.test'
+  `).run();
+}
+
+function migrateEmployeeProfile(db) {
+  const existing = new Set(
+    db.prepare('PRAGMA table_info(Employees)').all().map((column) => column.name)
+  );
+  const additions = [
+    ['Sex', 'TEXT'],
+    ['BirthDate', 'TEXT'],
+    ['Phone', 'TEXT'],
+    ['Address', 'TEXT'],
+    ['Education', 'TEXT']
+  ];
+  for (const [name, definition] of additions) {
+    if (!existing.has(name)) {
+      db.exec(`ALTER TABLE Employees ADD COLUMN ${name} ${definition}`);
+    }
+  }
+  db.prepare(`
+    UPDATE Employees
+    SET Sex = COALESCE(Sex, 'NotSpecified'),
+        BirthDate = COALESCE(BirthDate, '1990-01-01'),
+        Phone = COALESCE(Phone, '+1-555-0100'),
+        Address = COALESCE(Address, 'DatingEasy888 operations office'),
+        Education = COALESCE(Education, 'Not specified')
   `).run();
 }
 
@@ -365,9 +392,9 @@ function seedDatabase(db) {
 
   const insertEmployee = db.prepare(`
     INSERT INTO Employees (
-      EmployeeId, Email, PasswordHash, DisplayName, EmployeeType,
-      Role, Active, StartDate, Remark
-    ) VALUES (?, ?, ?, ?, 'Human', ?, 1, ?, ?)
+      EmployeeId, Email, PasswordHash, DisplayName, Sex, BirthDate, Phone,
+      Address, Education, EmployeeType, Role, Active, StartDate, Remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Human', ?, 1, ?, ?)
   `);
   const employeeId = randomUUID();
   insertEmployee.run(
@@ -375,6 +402,11 @@ function seedDatabase(db) {
     'operator@datingeasy.test',
     hashPassword('Demo123!'),
     'Jordan Lee',
+    'NotSpecified',
+    '1990-01-01',
+    '+1-213-555-0130',
+    '100 Operations Way, Los Angeles, CA',
+    'Customer operations training',
     'ChatEmployee',
     '2026-01-01',
     'Prototype seed conversation operator'
@@ -385,6 +417,11 @@ function seedDatabase(db) {
     'admin@datingeasy.test',
     hashPassword('Demo123!'),
     'Morgan Chen',
+    'NotSpecified',
+    '1988-01-01',
+    '+1-213-555-0131',
+    '200 Administration Ave, Los Angeles, CA',
+    'Business administration',
     'Administrator',
     '2026-01-01',
     'Prototype administrator'
@@ -395,6 +432,11 @@ function seedDatabase(db) {
     'ceo@datingeasy.test',
     hashPassword('Demo123!'),
     'Avery Brooks',
+    'NotSpecified',
+    '1985-01-01',
+    '+1-213-555-0132',
+    '300 Executive Blvd, Los Angeles, CA',
+    'Executive leadership',
     'CEO',
     '2026-01-01',
     'Prototype chief executive'

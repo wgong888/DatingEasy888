@@ -213,8 +213,11 @@ async function loadResets() {
 function renderEmployees() {
   $('#employee-list').innerHTML = state.employees.map((employee) => `
     <article class="admin-table-row ${employee.active ? '' : 'inactive'}">
-      <div><strong>${escapeHtml(employee.displayName)}</strong><span>${escapeHtml(employee.email)}</span></div>
-      <div><strong>${escapeHtml(employee.role.replace('ChatEmployee', 'Chat employee'))}</strong><span>${employee.active ? 'Active' : 'Removed'}</span></div>
+      <div><strong>${escapeHtml(employee.displayName)}</strong><span>${escapeHtml(employee.email)} · ${escapeHtml(employee.phone || 'No phone')}</span></div>
+      <div>
+        <strong>${escapeHtml(employee.role.replace('ChatEmployee', 'Chat employee'))}</strong>
+        <span>${escapeHtml(employee.sex || 'NotSpecified')} · ${escapeHtml(employee.education || 'No education')} · ${employee.active ? 'Active' : 'Removed'}</span>
+      </div>
       <div class="row-actions">
         <button class="secondary compact-button" type="button" data-edit-employee="${employee.employeeId}">Edit</button>
         ${employee.active ? `<button class="danger-button compact-button" type="button" data-remove-employee="${employee.employeeId}">Remove</button>` : ''}
@@ -377,6 +380,11 @@ function openEmployeeDialog(employee = null) {
   form.elements.employeeId.value = employee?.employeeId || '';
   form.elements.displayName.value = employee?.displayName || '';
   form.elements.email.value = employee?.email || '';
+  form.elements.sex.value = employee?.sex || 'NotSpecified';
+  form.elements.birthDate.value = employee?.birthDate || '1990-01-01';
+  form.elements.phone.value = employee?.phone || '';
+  form.elements.address.value = employee?.address || '';
+  form.elements.education.value = employee?.education || '';
   form.elements.role.value = employee?.role || 'ChatEmployee';
   form.elements.remark.value = employee?.remark || '';
   form.elements.active.checked = employee?.active ?? true;

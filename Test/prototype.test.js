@@ -1381,11 +1381,18 @@ test('admin creates, edits, and removes all supported employee roles', async () 
       body: {
         email: `${role.toLowerCase()}-new@example.test`,
         displayName: `New ${role}`,
+        sex: 'NotSpecified',
+        birthDate: '1991-02-03',
+        phone: '+1-213-555-0900',
+        address: '400 Test Staff Lane, Los Angeles, CA',
+        education: `${role} training program`,
         role
       }
     });
     assert.equal(created.response.status, 201);
     assert.equal(created.payload.data.employee.role, role);
+    assert.equal(created.payload.data.employee.phone, '+1-213-555-0900');
+    assert.equal(created.payload.data.employee.education, `${role} training program`);
     const staffLogin = await request('/api/v1/auth/staff/login', {
       method: 'POST',
       body: {
@@ -1405,6 +1412,9 @@ test('admin creates, edits, and removes all supported employee roles', async () 
       headers: { Cookie: adminLogin.cookie },
       body: {
         displayName: 'Edited Chat Employee',
+        phone: '+1-213-555-0999',
+        address: '401 Edited Staff Lane, Los Angeles, CA',
+        education: 'Administrator onboarding',
         role: 'Administrator',
         active: true
       }
@@ -1412,6 +1422,8 @@ test('admin creates, edits, and removes all supported employee roles', async () 
   );
   assert.equal(edited.payload.data.employee.displayName, 'Edited Chat Employee');
   assert.equal(edited.payload.data.employee.role, 'Administrator');
+  assert.equal(edited.payload.data.employee.phone, '+1-213-555-0999');
+  assert.equal(edited.payload.data.employee.education, 'Administrator onboarding');
 
   for (const employee of createdEmployees) {
     const removed = await request(`/api/v1/admin/employees/${employee.employeeId}`, {

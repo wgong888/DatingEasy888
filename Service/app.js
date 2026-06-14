@@ -229,6 +229,38 @@ function parseSexFilter(value) {
   return ['Man', 'Woman', 'Nonbinary', 'NotSpecified'].includes(sex) ? sex : '';
 }
 
+const EMPLOYEE_ROLES = ['ChatEmployee', 'Administrator', 'CEO'];
+const EMPLOYEE_SEXES = ['Man', 'Woman', 'Nonbinary', 'NotSpecified'];
+
+function employeeProfileFromBody(body, current = {}) {
+  return {
+    email: String(body.email ?? current.Email ?? '').trim().toLowerCase(),
+    displayName: String(body.displayName ?? current.DisplayName ?? '').trim(),
+    sex: String(body.sex ?? current.Sex ?? '').trim(),
+    birthDate: String(body.birthDate ?? current.BirthDate ?? '').trim(),
+    phone: String(body.phone ?? current.Phone ?? '').trim(),
+    address: String(body.address ?? current.Address ?? '').trim(),
+    education: String(body.education ?? current.Education ?? '').trim(),
+    role: String(body.role ?? current.Role ?? ''),
+    remark: String(body.remark ?? current.Remark ?? '').trim()
+  };
+}
+
+function validateEmployeeProfile(profile) {
+  const fields = {};
+  if (!profile.email.includes('@')) fields.email = 'Enter a valid email address.';
+  if (profile.displayName.length < 2) fields.displayName = 'Enter the employee full name.';
+  if (!EMPLOYEE_SEXES.includes(profile.sex)) fields.sex = 'Choose the employee sex.';
+  if (ageFromBirthDate(profile.birthDate) < 18) fields.birthDate = 'Employee must be at least 18.';
+  if (profile.phone.length < 7 || profile.phone.length > 50) fields.phone = 'Enter a valid phone number.';
+  if (profile.address.length < 5 || profile.address.length > 300) fields.address = 'Enter the employee address.';
+  if (profile.education.length < 2 || profile.education.length > 120) fields.education = 'Enter the education background.';
+  if (!EMPLOYEE_ROLES.includes(profile.role)) fields.role = 'Choose a valid employee role.';
+  if (Object.keys(fields).length) {
+    throw new ApiError(422, 'VALIDATION_FAILED', 'Complete every required employee profile field.', fields);
+  }
+}
+
 function cardTypeFromNumber(value) {
   if (/^4/u.test(value)) return 'VISA';
   if (/^(5[1-5]|2[2-7])/u.test(value)) return 'MASTERCARD';
@@ -616,6 +648,11 @@ function normalizeEmployee(row) {
     employeeId: row.EmployeeId,
     email: row.Email,
     displayName: row.DisplayName,
+    sex: row.Sex || 'NotSpecified',
+    birthDate: row.BirthDate || '',
+    phone: row.Phone || '',
+    address: row.Address || '',
+    education: row.Education || '',
     employeeType: row.EmployeeType,
     role: row.Role,
     active: Boolean(row.Active),
@@ -2361,32 +2398,33 @@ function createApplication(options = {}) {
     if (req.method === 'POST' && pathname === '/api/v1/admin/employees') {
       const session = requireAdmin(db, req);
       const body = await readJson(req);
-      const email = String(body.email || '').trim().toLowerCase();
-      const displayName = String(body.displayName || '').trim();
-      const role = String(body.role || '');
-      if (!email.includes('@') || displayName.length < 2 || !['ChatEmployee', 'Administrator', 'CEO'].includes(role)) {
-        throw new ApiError(422, 'VALIDATION_FAILED', 'Enter a valid name, email, and employee role.');
-      }
-      if (db.prepare('SELECT 1 FROM Employees WHERE Email = ?').get(email)) {
+      const profile = employeeProfileFromBody(body);
+      validateEmployeeProfile(profile);
+      if (db.prepare('SELECT 1 FROM Employees WHERE Email = ?').get(profile.email)) {
         throw new ApiError(409, 'EMAIL_IN_USE', 'That employee email is already registered.');
       }
       const employeeId = randomUUID();
       const generated = temporaryPassword();
       db.prepare(`
         INSERT INTO Employees (
-          EmployeeId, Email, PasswordHash, DisplayName, EmployeeType,
-          Role, Active, StartDate, Remark
-        ) VALUES (?, ?, ?, ?, 'Human', ?, 1, ?, ?)
+          EmployeeId, Email, PasswordHash, DisplayName, Sex, BirthDate, Phone,
+          Address, Education, EmployeeType, Role, Active, StartDate, Remark
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Human', ?, 1, ?, ?)
       `).run(
         employeeId,
-        email,
+        profile.email,
         hashPassword(generated),
-        displayName,
-        role,
+        profile.displayName,
+        profile.sex,
+        profile.birthDate,
+        profile.phone,
+        profile.address,
+        profile.education,
+        profile.role,
         now().slice(0, 10),
-        String(body.remark || '')
+        profile.remark
       );
-      audit(db, 'Employee', session.PrincipalId, 'EmployeeCreated', 'Employee', employeeId, { role });
+      audit(db, 'Employee', session.PrincipalId, 'EmployeeCreated', 'Employee', employeeId, { role: profile.role });
       return json(res, 201, envelope({
         employee: normalizeEmployee(db.prepare('SELECT * FROM Employees WHERE EmployeeId = ?').get(employeeId)),
         temporaryPassword: generated
@@ -2401,27 +2439,41 @@ function createApplication(options = {}) {
       const employee = db.prepare('SELECT * FROM Employees WHERE EmployeeId = ?').get(params.employeeId);
       if (!employee) throw new ApiError(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found.');
       const body = await readJson(req);
-      const displayName = String(body.displayName ?? employee.DisplayName).trim();
-      const email = String(body.email ?? employee.Email).trim().toLowerCase();
-      const role = String(body.role ?? employee.Role);
+      const profile = employeeProfileFromBody(body, employee);
       const active = body.active === undefined ? employee.Active : Number(Boolean(body.active));
-      if (!email.includes('@') || displayName.length < 2 || !['ChatEmployee', 'Administrator', 'CEO'].includes(role)) {
-        throw new ApiError(422, 'VALIDATION_FAILED', 'Enter a valid name, email, and employee role.');
-      }
+      validateEmployeeProfile(profile);
       if (session.PrincipalId === employee.EmployeeId && !active) {
         throw new ApiError(422, 'CANNOT_DEACTIVATE_SELF', 'You cannot deactivate your own account.');
       }
+      const matchingEmail = db.prepare('SELECT EmployeeId FROM Employees WHERE Email = ?')
+        .get(profile.email);
+      if (matchingEmail && matchingEmail.EmployeeId !== employee.EmployeeId) {
+        throw new ApiError(409, 'EMAIL_IN_USE', 'That employee email is already registered.');
+      }
       db.prepare(`
         UPDATE Employees
-        SET DisplayName = ?, Email = ?, Role = ?, Active = ?, Remark = ?
+        SET DisplayName = ?, Email = ?, Sex = ?, BirthDate = ?, Phone = ?,
+            Address = ?, Education = ?, Role = ?, Active = ?, Remark = ?
         WHERE EmployeeId = ?
-      `).run(displayName, email, role, active, String(body.remark ?? employee.Remark ?? ''), employee.EmployeeId);
+      `).run(
+        profile.displayName,
+        profile.email,
+        profile.sex,
+        profile.birthDate,
+        profile.phone,
+        profile.address,
+        profile.education,
+        profile.role,
+        active,
+        profile.remark,
+        employee.EmployeeId
+      );
       if (!active) {
         db.prepare(`DELETE FROM Sessions WHERE PrincipalType = 'Employee' AND PrincipalId = ?`)
           .run(employee.EmployeeId);
       }
       audit(db, 'Employee', session.PrincipalId, 'EmployeeUpdated', 'Employee', employee.EmployeeId, {
-        role,
+        role: profile.role,
         active: Boolean(active)
       });
       return json(res, 200, envelope({

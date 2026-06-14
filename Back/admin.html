@@ -171,8 +171,26 @@
     <form id="employee-form">
       <div class="dialog-heading"><h2 id="employee-dialog-title">Add employee</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
       <input name="employeeId" type="hidden">
-      <label>Full name<input name="displayName" required></label>
-      <label>Work email<input name="email" type="email" required></label>
+      <div class="payment-field-pair">
+        <label>Full name<input name="displayName" required></label>
+        <label>Work email<input name="email" type="email" required></label>
+      </div>
+      <div class="payment-field-pair">
+        <label>Sex
+          <select name="sex" required>
+            <option value="NotSpecified">Not specified</option>
+            <option value="Woman">Woman</option>
+            <option value="Man">Man</option>
+            <option value="Nonbinary">Nonbinary</option>
+          </select>
+        </label>
+        <label>Birth day<input name="birthDate" type="date" required></label>
+      </div>
+      <div class="payment-field-pair">
+        <label>Phone number<input name="phone" type="tel" maxlength="50" required></label>
+        <label>Education<input name="education" maxlength="120" required></label>
+      </div>
+      <label>Address<textarea name="address" rows="2" maxlength="300" required></textarea></label>
       <label>Role
         <select name="role" required>
           <option value="ChatEmployee">Chat employee</option>

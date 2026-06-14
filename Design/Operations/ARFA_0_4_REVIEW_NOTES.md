@@ -13,6 +13,8 @@ Status: Ready for product-owner review
 - Administrator overview, password recovery, employee maintenance, policy
   maintenance, outgoing-payment preparation, health, audit, and robot
   operations
+- Administrator employee creation captures required profile details including
+  sex, birth day, phone number, address, and education
 - CEO four-panel finance, presence, health, and outgoing-payment approval
 - Same-browser review across customer, employee, administrator, and CEO tabs
   without session overwrite
