@@ -9,7 +9,8 @@ const state = {
   payments: [],
   robots: null,
   locations: null,
-  currentView: 'overview'
+  currentView: 'overview',
+  viewRequestId: 0
 };
 
 function escapeHtml(value) {
@@ -19,13 +20,23 @@ function escapeHtml(value) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: 'same-origin',
-    headers: options.body ? { 'Content-Type': 'application/json' } : {},
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  const payload = await response.json();
+  let response;
+  try {
+    response = await fetch(path, {
+      credentials: 'same-origin',
+      headers: options.body ? { 'Content-Type': 'application/json' } : {},
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+  } catch {
+    throw new Error('Cannot reach the DatingEasy888 service. Please refresh after the server is running.');
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Request failed with status ${response.status}.`);
+  }
   if (!response.ok || !payload.success) {
     const error = new Error(payload.error?.message || 'Request failed.');
     error.code = payload.error?.code;
@@ -203,7 +214,7 @@ function renderResets() {
 async function loadResets() {
   const [resets, policies] = await Promise.all([
     api('/api/v1/admin/password-reset-requests'),
-    state.policies.length ? Promise.resolve({ items: state.policies }) : api('/api/v1/admin/policies')
+    api('/api/v1/admin/policies')
   ]);
   state.resets = resets.items;
   state.policies = policies.items;
@@ -361,17 +372,26 @@ async function loadHealth() {
 }
 
 async function switchView(view) {
+  const requestId = ++state.viewRequestId;
   state.currentView = view;
+  setStatus('Loading...', '');
+  try {
+    if (view === 'overview' || view === 'audit') await loadDashboard();
+    if (view === 'resets') await loadResets();
+    if (view === 'payments') await loadPayments();
+    if (view === 'employees') await loadEmployees();
+    if (view === 'robots') await loadRobots();
+    if (view === 'policies') await loadPolicies();
+    if (view === 'health') await loadHealth();
+  } catch (error) {
+    if (requestId === state.viewRequestId) throw error;
+    return;
+  }
+  if (requestId !== state.viewRequestId) return;
   $$('.admin-view').forEach((element) => element.classList.add('hidden'));
   $(`#admin-view-${view}`).classList.remove('hidden');
   $$('[data-admin-view]').forEach((button) => button.classList.toggle('active', button.dataset.adminView === view));
-  if (view === 'overview' || view === 'audit') await loadDashboard();
-  if (view === 'resets') await loadResets();
-  if (view === 'payments') await loadPayments();
-  if (view === 'employees') await loadEmployees();
-  if (view === 'robots') await loadRobots();
-  if (view === 'policies') await loadPolicies();
-  if (view === 'health') await loadHealth();
+  setStatus('', '');
 }
 
 function openEmployeeDialog(employee = null) {
@@ -580,7 +600,8 @@ document.addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('click', async (event) => {
-  const target = event.target;
+  const target = event.target.closest('button, [data-admin-view], [data-edit-employee], [data-remove-employee], [data-approve-reset], [data-reject-reset], [data-close-dialog]');
+  if (!target) return;
   try {
     if (target.dataset.adminView) return await switchView(target.dataset.adminView);
     if (target.matches('[data-close-dialog]')) return target.closest('dialog').close();

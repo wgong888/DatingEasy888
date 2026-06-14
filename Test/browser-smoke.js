@@ -371,7 +371,7 @@ async function adminFlow(browser) {
   await page.locator('#payment-form').getByRole('button', { name: 'Send to CEO' }).click();
   await page.getByText(/payment sent to the CEO approval queue/).waitFor();
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  await page.getByRole('button', { name: /Outgoing payments/ }).click();
+  await page.locator('#payment-nav-count').click();
   await page.locator('.payment-admin-row', { hasText: 'Browser Services LLC' }).waitFor();
 
   await page.getByRole('button', { name: /Password resets/ }).click();
@@ -457,6 +457,12 @@ async function adminFlow(browser) {
   await policyForm.locator('[name="value"]').fill('reviewed');
   await policyForm.getByRole('button', { name: 'Save changes' }).click();
   await page.getByText('Policy updated and versioned.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Policies', exact: true }).click();
+  assert.equal(
+    await page.locator('[data-policy-form]', { hasText: 'Browser test policy' }).locator('[name="value"]').inputValue(),
+    'reviewed'
+  );
 
   await page.getByRole('button', { name: 'System health' }).click();
   await page.getByRole('button', { name: 'Refresh checks' }).click();
