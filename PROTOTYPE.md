@@ -86,6 +86,7 @@ address may change after reconnecting to Wi-Fi.
 - Chat employee, administrator, and CEO account create/edit/remove workflows
 - Role-specific review sessions so customer, employee, administrator, and CEO
   tabs can remain signed in in the same browser during Arfa review
+- Administrator robot creation with country, state/province, and city dropdowns
 - Policy add/edit/enable/disable with version increments
 - Refreshable system health, operation status, and audit activity
 - Four-panel CEO dashboard with period finance, online presence, health, and outgoing-payment decisions

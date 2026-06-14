@@ -8,6 +8,7 @@ const state = {
   resets: [],
   payments: [],
   robots: null,
+  locations: null,
   currentView: 'overview'
 };
 
@@ -41,6 +42,86 @@ function setStatus(message, tone = '') {
 
 function formatTime(value) {
   return value ? new Date(value).toLocaleString() : 'Not yet';
+}
+
+function stateCode(locationState) {
+  return String(locationState.id || locationState.name || '').split('-').pop();
+}
+
+function optionHtml(value, label, selectedValue = '') {
+  return `<option value="${escapeHtml(value)}" ${value === selectedValue ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+}
+
+function fallbackLocations() {
+  return {
+    countries: [
+      {
+        code: 'US',
+        name: 'United States',
+        states: [
+          {
+            id: 'US-CA',
+            name: 'California',
+            cities: ['Los Angeles', 'San Francisco', 'San Diego', 'Sacramento', 'Long Beach']
+          }
+        ]
+      }
+    ]
+  };
+}
+
+async function loadLocations() {
+  if (state.locations) return state.locations;
+  try {
+    state.locations = await fetch('/data/countries_states_cities.json')
+      .then((response) => {
+        if (!response.ok) throw new Error('Location data unavailable.');
+        return response.json();
+      });
+  } catch {
+    state.locations = fallbackLocations();
+  }
+  return state.locations;
+}
+
+function selectedCountry(countryCode = 'US') {
+  const countries = state.locations?.countries || [];
+  return countries.find((country) => country.code === countryCode) || countries[0];
+}
+
+function selectedState(country, submittedState = 'CA') {
+  return country?.states.find((item) => (
+    stateCode(item) === submittedState || item.name === submittedState || item.id === submittedState
+  )) || country?.states[0];
+}
+
+function renderRobotCountryOptions(countryCode = 'US') {
+  const country = selectedCountry(countryCode);
+  $('#robot-form').elements.countryCode.innerHTML = (state.locations?.countries || [])
+    .map((item) => optionHtml(item.code, item.name, country?.code))
+    .join('');
+  renderRobotStateOptions(country?.code || countryCode, 'CA');
+}
+
+function renderRobotStateOptions(countryCode = 'US', submittedState = 'CA') {
+  const form = $('#robot-form');
+  const country = selectedCountry(countryCode);
+  const locationState = selectedState(country, submittedState);
+  form.elements.state.innerHTML = (country?.states || [])
+    .map((item) => optionHtml(stateCode(item), item.name, stateCode(locationState)))
+    .join('');
+  renderRobotCityOptions(country?.code || countryCode, stateCode(locationState), 'Los Angeles');
+}
+
+function renderRobotCityOptions(countryCode = 'US', submittedState = 'CA', submittedCity = 'Los Angeles') {
+  const form = $('#robot-form');
+  const country = selectedCountry(countryCode);
+  const locationState = selectedState(country, submittedState);
+  const cities = locationState?.cities || [];
+  const selectedCity = cities.includes(submittedCity) ? submittedCity : cities[0];
+  form.elements.city.innerHTML = cities
+    .map((city) => optionHtml(city, city, selectedCity))
+    .join('');
 }
 
 function metricCard(label, data, suffix = '') {
@@ -325,14 +406,15 @@ function updateRobotCreationMode() {
   }
 }
 
-function openRobotDialog() {
+async function openRobotDialog() {
   const form = $('#robot-form');
+  await loadLocations();
   form.reset();
   form.elements.creationMode.value = 'AutoFill';
   form.elements.sex.value = 'Woman';
-  form.elements.countryCode.value = 'US';
-  form.elements.state.value = 'CA';
-  form.elements.city.value = 'Los Angeles';
+  renderRobotCountryOptions('US');
+  renderRobotStateOptions('US', 'CA');
+  renderRobotCityOptions('US', 'CA', 'Los Angeles');
   updateRobotCreationMode();
   $('#robot-dialog').showModal();
 }
@@ -426,6 +508,13 @@ $('#robot-ai-form').addEventListener('submit', async (event) => {
 
 $('#robot-form').addEventListener('change', (event) => {
   if (event.target.name === 'creationMode') updateRobotCreationMode();
+  if (event.target.name === 'countryCode') {
+    renderRobotStateOptions(event.target.value);
+  }
+  if (event.target.name === 'state') {
+    const form = $('#robot-form');
+    renderRobotCityOptions(form.elements.countryCode.value, event.target.value);
+  }
   if (event.target.name === 'sex' && $('#robot-form').elements.creationMode.value === 'FullProfile') {
     const photo = $('#robot-form').elements.profilePhoto;
     if (!photo.value || photo.value.startsWith('/assets/profiles/default-')) {
@@ -490,7 +579,7 @@ document.addEventListener('click', async (event) => {
     if (target.id === 'add-employee') return openEmployeeDialog();
     if (target.id === 'add-payment') return $('#payment-dialog').showModal();
     if (target.id === 'add-policy') return $('#policy-dialog').showModal();
-    if (target.id === 'add-robot') return openRobotDialog();
+    if (target.id === 'add-robot') return await openRobotDialog();
     if (target.id === 'refresh-health') return await loadHealth();
     if (target.id === 'refresh-robots') return await loadRobots();
     if (target.id === 'regenerate-robot-shifts') {

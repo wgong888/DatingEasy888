@@ -412,9 +412,11 @@ async function adminFlow(browser) {
   await robotForm.locator('[name="displayName"]').fill('Browser Taylor');
   await robotForm.locator('[name="age"]').fill('39');
   await robotForm.locator('[name="sex"]').selectOption('Woman');
-  await robotForm.locator('[name="countryCode"]').fill('US');
-  await robotForm.locator('[name="state"]').fill('CA');
-  await robotForm.locator('[name="city"]').fill('Los Angeles');
+  await robotForm.locator('[name="countryCode"]').selectOption('US');
+  await robotForm.locator('[name="state"]').selectOption({ label: 'California' });
+  await robotForm.locator('[name="city"]').selectOption('Los Angeles');
+  assert.equal(await robotForm.locator('[name="state"]').inputValue(), 'CA');
+  assert.equal(await robotForm.locator('[name="city"]').inputValue(), 'Los Angeles');
   await page.screenshot({
     path: path.join(OUTPUT, 'admin-robot-create-dialog.png'),
     fullPage: true

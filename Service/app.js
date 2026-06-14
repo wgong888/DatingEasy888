@@ -3199,13 +3199,16 @@ function createApplication(options = {}) {
       filePath = path.join(ROOT, 'Front', pathname.slice('/front/'.length));
     } else if (pathname.startsWith('/back/')) {
       filePath = path.join(ROOT, 'Back', pathname.slice('/back/'.length));
+    } else if (pathname.startsWith('/data/')) {
+      filePath = path.join(ROOT, 'Design', 'Data', pathname.slice('/data/'.length));
     } else {
       return false;
     }
     const allowedRoots = [
       path.join(ROOT, 'Front'),
       path.join(ROOT, 'Back'),
-      path.join(ROOT, 'Resource', 'profiles')
+      path.join(ROOT, 'Resource', 'profiles'),
+      path.join(ROOT, 'Design', 'Data')
     ];
     const resolved = path.resolve(filePath);
     if (!allowedRoots.some((root) => resolved.startsWith(root)) || !fs.existsSync(resolved)) {
@@ -3216,10 +3219,11 @@ function createApplication(options = {}) {
         '.html': 'text/html; charset=utf-8',
         '.css': 'text/css; charset=utf-8',
         '.js': 'text/javascript; charset=utf-8',
-        '.svg': 'image/svg+xml',
-        '.png': 'image/png',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
       '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg'
+      '.jpeg': 'image/jpeg',
+      '.json': 'application/json; charset=utf-8'
     };
     const stat = fs.statSync(resolved);
     res.writeHead(200, {

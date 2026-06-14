@@ -243,9 +243,15 @@
             <option value="NotSpecified">Not specified</option>
           </select>
         </label>
-        <label>Country code<input name="countryCode" value="US" minlength="2" maxlength="2" required></label>
-        <label>State or province<input name="state" value="CA" maxlength="120" required></label>
-        <label>City<input name="city" value="Los Angeles" maxlength="120" required></label>
+        <label>Country
+          <select name="countryCode" required></select>
+        </label>
+        <label>State or province
+          <select name="state" required></select>
+        </label>
+        <label>City
+          <select name="city" required></select>
+        </label>
       </div>
       <p id="robot-mode-guidance" class="form-guidance">The system will create a complete inactive draft from these required details.</p>
       <div id="robot-full-fields" class="robot-full-fields hidden">

@@ -24,6 +24,8 @@ Status: Ready for product-owner review
 - Direct customer-to-robot chats now reply immediately for selected robot
   profiles such as Grace, even when that robot is not the scheduled city
   coverage profile
+- Administrator robot creation now uses country, state/province, and city
+  dropdowns sourced from the shared location data
 - Headless robot engine with city coverage, eight-hour shift windows,
   same-sex reserve replacement, ten-conversation capacity, local English
   responses, and an administrator-controlled simulated outside-AI mode
@@ -37,7 +39,7 @@ Status: Ready for product-owner review
   messages, 130 robot replies, and exact credit reconciliation
 - Browser smoke coverage for customer desktop/mobile, employee, administrator,
   robot operations, CEO screens, Messages-list sending, mobile chat sending,
-  and Discover orientation filtering
+  robot location dropdowns, and Discover orientation filtering
 
 ## Arfa Boundaries
 The following are not defects in the local prototype and remain Beta work:
