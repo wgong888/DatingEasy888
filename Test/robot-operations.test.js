@@ -76,7 +76,7 @@ test('scheduler maintains one man and one woman online with eight-hour limits', 
   `).all();
   assert.deepEqual(
     Object.fromEntries(inventory.map((item) => [item.Sex, item.value])),
-    { Man: 4, Woman: 4 }
+    { Man: 6, Woman: 6 }
   );
 
   const active = activeRobots();
@@ -136,7 +136,7 @@ test('admin controls global AI mode, budgets, usage, and future shift regenerati
     headers: { Cookie: admin.cookie }
   });
   assert.equal(operations.response.status, 200);
-  assert.equal(operations.payload.data.robots.length, 8);
+  assert.equal(operations.payload.data.robots.length, 12);
   assert.equal(operations.payload.data.robots.filter((item) => item.online).length, 2);
   assert.equal(operations.payload.data.ai.mode, 'LocalOnly');
 

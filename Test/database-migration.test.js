@@ -45,14 +45,14 @@ test('existing prototype data is upgraded with robot inventory and AI policies',
   db = openDatabase(databasePath);
   assert.equal(
     db.prepare('SELECT COUNT(*) AS value FROM CustomerProfile WHERE Seed = 2').get().value,
-    8
+    12
   );
   assert.equal(
     db.prepare(`
       SELECT COUNT(*) AS value FROM CustomerProfile
       WHERE Seed = 2 AND StateId = 'CA' AND CityName = 'Los Angeles'
     `).get().value,
-    8
+    12
   );
   assert.equal(
     db.prepare(`

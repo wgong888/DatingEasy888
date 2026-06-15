@@ -15,6 +15,8 @@ Status: Ready for product-owner review
   operations
 - Administrator employee creation captures required profile details including
   sex, birth day, phone number, address, and education
+- Review database baseline now includes 200 real customers, 5 seed customers,
+  and 12 robot customers
 - CEO four-panel finance, presence, health, and outgoing-payment approval
 - Same-browser review across customer, employee, administrator, and CEO tabs
   without session overwrite

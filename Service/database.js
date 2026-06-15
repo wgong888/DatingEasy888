@@ -108,6 +108,50 @@ const profiles = [
     bio: 'I am happiest near mountains or a kitchen full of good smells, especially when conversation comes easily.'
   },
   {
+    name: 'Henry',
+    seedType: 2,
+    sex: 'Man',
+    lookingFor: 'Women',
+    birthDate: '1982-07-19',
+    city: 'Los Angeles',
+    state: 'CA',
+    photoPosition: '100% 100%',
+    bio: 'Thoughtful, active, and happiest when a weekend includes a good meal, a walk near the water, and a conversation with honest laughter.'
+  },
+  {
+    name: 'Miles',
+    seedType: 2,
+    sex: 'Man',
+    lookingFor: 'Women',
+    birthDate: '1986-02-22',
+    city: 'Los Angeles',
+    state: 'CA',
+    photoPosition: '50% 0%',
+    bio: 'I enjoy film nights, early coffee, simple cooking, and people who can talk about ordinary life with curiosity and kindness.'
+  },
+  {
+    name: 'Nora',
+    seedType: 2,
+    sex: 'Woman',
+    lookingFor: 'Men',
+    birthDate: '1983-09-16',
+    city: 'Los Angeles',
+    state: 'CA',
+    photoPosition: '0% 0%',
+    bio: 'Warm, grounded, and interested in creative people. I like weekend markets, quiet music, and conversations that feel natural.'
+  },
+  {
+    name: 'Violet',
+    seedType: 2,
+    sex: 'Woman',
+    lookingFor: 'Men',
+    birthDate: '1985-12-06',
+    city: 'Los Angeles',
+    state: 'CA',
+    photoPosition: '50% 100%',
+    bio: 'I like coastal drives, small restaurants, thoughtful questions, and anyone who can be both serious and easy to laugh with.'
+  },
+  {
     name: 'Lena',
     seedType: 1,
     sex: 'Woman',
@@ -153,6 +197,27 @@ const profiles = [
   }
 ];
 
+const TARGET_REAL_CUSTOMERS = 200;
+
+const realCustomerCities = [
+  ['CA', 'Los Angeles'],
+  ['CA', 'San Diego'],
+  ['CA', 'San Francisco'],
+  ['WA', 'Seattle'],
+  ['CO', 'Denver'],
+  ['FL', 'Miami'],
+  ['MA', 'Boston'],
+  ['TX', 'Austin'],
+  ['NY', 'New York'],
+  ['IL', 'Chicago']
+];
+
+const realCustomerNames = [
+  'Avery', 'Blake', 'Casey', 'Dana', 'Elliot', 'Finley', 'Harper', 'Jordan',
+  'Kendall', 'Logan', 'Morgan', 'Parker', 'Quinn', 'Riley', 'Skyler', 'Taylor',
+  'Alexis', 'Cameron', 'Devon', 'Emerson'
+];
+
 function now() {
   return new Date().toISOString();
 }
@@ -166,6 +231,7 @@ function openDatabase(databasePath = DEFAULT_DB_PATH) {
   migrateChargeRecord(db);
   seedDatabase(db);
   ensureRobotPrototypeData(db);
+  ensureRealCustomerVolume(db);
   return db;
 }
 
@@ -756,6 +822,125 @@ function ensureRobotPrototypeData(db) {
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, timestamp, timestamp);
   });
+}
+
+function generatedRealCustomer(index) {
+  const [state, city] = realCustomerCities[index % realCustomerCities.length];
+  const sex = index % 2 === 0 ? 'Woman' : 'Man';
+  const name = `${realCustomerNames[index % realCustomerNames.length]} ${String(index).padStart(3, '0')}`;
+  const birthYear = 1971 + (index % 27);
+  const birthMonth = String((index % 12) + 1).padStart(2, '0');
+  const birthDay = String((index % 27) + 1).padStart(2, '0');
+  return {
+    email: `real-customer-${String(index).padStart(3, '0')}@customer.datingeasy.test`,
+    phone: `+1-555-02${String(index).padStart(3, '0')}`,
+    displayName: name,
+    birthDate: `${birthYear}-${birthMonth}-${birthDay}`,
+    sex,
+    lookingFor: sex === 'Man' ? 'Women' : 'Men',
+    state,
+    city,
+    bio: `I live near ${city} and enjoy practical plans, good food, music, and steady conversation.`,
+    maritalStatus: ['Single', 'Divorced', 'Widowed'][index % 3],
+    workField: ['Technology', 'Education', 'Healthcare', 'Business', 'Creative services'][index % 5],
+    englishLevel: ['Advanced', 'Native', 'Intermediate'][index % 3],
+    languages: index % 4 === 0 ? ['English', 'Mandarin'] : ['English'],
+    traits: ['Thoughtful', 'Optimistic', 'Kind'],
+    interests: ['Traveling', 'Cooking', 'Music', 'Reading', 'Nature'].slice(0, 3 + (index % 3)),
+    movies: ['Comedy', 'Adventure', 'Drama'].slice(0, 2 + (index % 2)),
+    music: ['Jazz', 'Pop', 'Rock'].slice(0, 2 + (index % 2)),
+    goals: ['Chatting', 'Finding a friend'],
+    preferredAgeMin: 32,
+    preferredAgeMax: 62,
+    personalityType: ['Easygoing', 'Family focused', 'Creative spirit', 'Quiet thinker'][index % 4],
+    story: `I am here to meet adults who enjoy clear, respectful conversation. Around ${city}, I like simple weekends, local food, and learning what makes another person's life interesting.`,
+    profilePhoto: defaultProfilePhoto(sex)
+  };
+}
+
+function ensureRealCustomerVolume(db) {
+  let count = db.prepare(`
+    SELECT COUNT(*) AS value FROM CustomerProfile WHERE Seed = 0
+  `).get().value;
+  if (count >= TARGET_REAL_CUSTOMERS) return;
+
+  const timestamp = now();
+  const insertCustomer = db.prepare(`
+    INSERT INTO CustomerProfile (
+      CustomerId, Email, EmailNormalized, Phone, PasswordHash, DisplayName, BirthDate,
+      Sex, GenderLookingFor, CountryCode, StateId, CityName, Bio, ProfilePhoto,
+      MaritalStatus, WorkField, EnglishLevel, LanguagesJson, TraitsJson,
+      InterestsJson, MoviePreferencesJson, MusicPreferencesJson, GoalsJson,
+      PreferredAgeMin, PreferredAgeMax, PersonalityType, Story,
+      PublicPhotosJson, PrivatePhotosJson, ProfileCompleted, ProfileCompleteness,
+      CreateTime, UpdateTime, Active, Seed, CreditsRemain, TotalCharged, Remark
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, 'US', ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 1, 100,
+      ?, ?, 1, 0, 150, 0, ?
+    )
+  `);
+  const insertLedger = db.prepare(`
+    INSERT INTO CreditLedger (
+      CreditLedgerId, CustomerId, TransactionTime, TransactionType,
+      CreditsChange, BalanceAfter, ReferenceType, Remark
+    ) VALUES (?, ?, ?, 'PrototypeOpeningBalance', 150, 150, 'Prototype', ?)
+  `);
+  const generatedPasswordHash = hashPassword('Demo123!');
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (let index = 1; count < TARGET_REAL_CUSTOMERS; index += 1) {
+      const profile = generatedRealCustomer(index);
+      if (db.prepare('SELECT 1 FROM CustomerProfile WHERE EmailNormalized = ?').get(profile.email)) {
+        continue;
+      }
+      const customerId = randomUUID();
+      insertCustomer.run(
+        customerId,
+        profile.email,
+        profile.email,
+        profile.phone,
+        generatedPasswordHash,
+        profile.displayName,
+        profile.birthDate,
+        profile.sex,
+        profile.lookingFor,
+        profile.state,
+        profile.city,
+        profile.bio,
+        profile.profilePhoto,
+        profile.maritalStatus,
+        profile.workField,
+        profile.englishLevel,
+        JSON.stringify(profile.languages),
+        JSON.stringify(profile.traits),
+        JSON.stringify(profile.interests),
+        JSON.stringify(profile.movies),
+        JSON.stringify(profile.music),
+        JSON.stringify(profile.goals),
+        profile.preferredAgeMin,
+        profile.preferredAgeMax,
+        profile.personalityType,
+        profile.story,
+        JSON.stringify([profile.profilePhoto]),
+        timestamp,
+        timestamp,
+        'Generated prototype real customer for volume testing'
+      );
+      insertLedger.run(
+        randomUUID(),
+        customerId,
+        timestamp,
+        'Seeded generated real-customer opening balance'
+      );
+      count += 1;
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 function resetDatabase(databasePath = DEFAULT_DB_PATH) {

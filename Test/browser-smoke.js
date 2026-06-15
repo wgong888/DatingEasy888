@@ -35,7 +35,7 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('.bottom-nav [data-view="discover"]').click();
     await page.locator('#profile-grid .profile-card').first().waitFor();
   }
-  assert.equal(await page.locator('#profile-grid .profile-card').count(), 7);
+  assert.equal(await page.locator('#profile-grid .profile-card').count(), 20);
   assert.equal(await page.locator('#profile-grid .profile-card', { hasText: /Daniel|Ethan|Lucas|Noah|Marcus|Adrian/ }).count(), 0);
   assert.equal(await page.locator('.disclosure').count(), 0);
   assert.equal(await page.getByText(/seed customer|robot customer/i).count(), 0);
@@ -152,7 +152,7 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).waitFor();
     await page.locator('#discover-filter-form').getByRole('button', { name: 'Clear' }).click();
     await page.locator('#profile-grid .profile-card').first().waitFor();
-    assert.equal(await page.locator('#profile-grid .profile-card').count(), 7);
+    assert.equal(await page.locator('#profile-grid .profile-card').count(), 20);
     const graceCard = page.locator('#profile-grid .profile-card', { hasText: 'Grace' });
     await graceCard.locator('.favorite-button').click();
     await page.getByRole('button', { name: 'Favorites', exact: true }).click();
@@ -472,7 +472,7 @@ async function adminFlow(browser) {
   await page.getByRole('button', { name: 'Robot operations', exact: true }).click();
   await page.locator('#robot-summary .metric').first().waitFor();
   assert.equal(await page.locator('#robot-summary .metric').count(), 4);
-  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 8);
+  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 12);
   assert.equal(await page.locator('#robot-list .robot-state.online').count(), 2);
   await page.getByRole('button', { name: 'Add robot customer' }).click();
   const robotForm = page.locator('#robot-form');
@@ -503,7 +503,7 @@ async function adminFlow(browser) {
   await robotDraft.waitFor();
   await robotDraft.getByText('Inactive draft', { exact: true }).waitFor();
   await robotDraft.getByText(/AdminAssisted · Pending/).waitFor();
-  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 9);
+  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 13);
   await page.locator('#robot-ai-form [name="mode"]').selectOption('HybridExternalAllowed');
   await page.locator('#robot-ai-form').getByRole('button', { name: 'Save AI policy' }).click();
   await page.getByText('Robot AI policy updated for every robot.', { exact: true }).waitFor();

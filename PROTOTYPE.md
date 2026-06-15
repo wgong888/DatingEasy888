@@ -53,6 +53,8 @@ address may change after reconnecting to Wi-Fi.
 - Responsive profile discovery using original synthetic portraits
 - Customer-facing profiles hide internal real, seed, and robot classifications
 - Three customer types: real, employee-operated seed, and autonomous robot
+- Review seed data includes 200 real customers, 5 employee-operated seed
+  customers, and 12 autonomous robot customers
 - Enforced real-real, real-seed, and real-robot conversation matrix
 - Immediate prototype robot-customer responses with no employee assignment,
   including direct chats with non-scheduled robot profiles such as Grace

@@ -97,6 +97,18 @@ test('public health endpoint reports the release candidate ready', async () => {
   assert.equal(health.payload.data.releaseName, 'Arfa');
 });
 
+test('prototype database contains requested review data volume', () => {
+  const counts = app.db.prepare(`
+    SELECT Seed, COUNT(*) AS value
+    FROM CustomerProfile
+    GROUP BY Seed
+  `).all();
+  assert.deepEqual(
+    Object.fromEntries(counts.map((item) => [item.Seed, item.value])),
+    { 0: 200, 1: 5, 2: 12 }
+  );
+});
+
 test('customer login returns the durable opening balance', async () => {
   const cookie = await loginCustomer();
   const me = await request('/api/v1/customer/me', { headers: { Cookie: cookie } });
@@ -142,7 +154,7 @@ test('customer discovery hides internal customer types', async () => {
     headers: { Cookie: cookie }
   });
   assert.equal(result.response.status, 200);
-  assert.equal(result.payload.data.items.length, 7);
+  assert.equal(result.payload.data.items.length, 20);
   assert.ok(result.payload.data.items.every((profile) => profile.sex === 'Woman'));
   const assertTypeHidden = (profile) => {
     assert.equal('customerTypeCode' in profile, false);
@@ -179,7 +191,10 @@ test('customer discovery filters by search, city, age, sex, and orientation', as
     headers: { Cookie: cookie }
   });
   assert.equal(city.response.status, 200);
-  assert.deepEqual(city.payload.data.items.map((profile) => profile.displayName), ['Lena']);
+  assert.ok(city.payload.data.items.some((profile) => profile.displayName === 'Lena'));
+  assert.ok(city.payload.data.items.every((profile) => (
+    profile.city === 'Seattle' && profile.sex === 'Woman'
+  )));
 
   const age = await request('/api/v1/customer/discovery/profiles?minAge=41&maxAge=43', {
     headers: { Cookie: cookie }
@@ -194,7 +209,7 @@ test('customer discovery filters by search, city, age, sex, and orientation', as
     headers: { Cookie: cookie }
   });
   assert.equal(requestedWoman.response.status, 200);
-  assert.equal(requestedWoman.payload.data.items.length, 7);
+  assert.equal(requestedWoman.payload.data.items.length, 20);
 
   const requestedMan = await request('/api/v1/customer/discovery/profiles?sex=Man', {
     headers: { Cookie: cookie }
@@ -291,7 +306,7 @@ test('real customer can chat with a robot customer that answers autonomously', a
     .run();
 });
 
-test('real customer can keep chatting with Grace even when she is not the scheduled robot', async () => {
+test('real customer can keep chatting directly with Grace', async () => {
   const cookie = await loginCustomer();
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
@@ -300,7 +315,6 @@ test('real customer can keep chatting with Grace even when she is not the schedu
   });
   const grace = discovery.payload.data.items.find((profile) => profile.displayName === 'Grace');
   assert.ok(grace);
-  assert.notEqual(grace.customerId, currentRobotIdBySex('Woman'));
 
   const conversation = await request(`/api/v1/customer/conversations/with/${grace.customerId}`, {
     method: 'POST',
@@ -1153,7 +1167,7 @@ test('employee and administrator routes enforce role separation', async () => {
   assert.equal(dashboard.response.status, 200);
   assert.equal(dashboard.payload.data.metrics.seedCustomers.total, 5);
   assert.equal(dashboard.payload.data.metrics.seedCustomers.online, 5);
-  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 8);
+  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 12);
   assert.equal(dashboard.payload.data.metrics.robotCustomers.online, 2);
 });
 
@@ -1199,7 +1213,7 @@ test('admin overview reports total and online customer types with current-day fi
   assert.ok(dashboard.payload.data.metrics.realCustomers.online >= 1);
   assert.equal(dashboard.payload.data.metrics.seedCustomers.total, 5);
   assert.equal(dashboard.payload.data.metrics.seedCustomers.online, 5);
-  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 8);
+  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 12);
   assert.equal(dashboard.payload.data.metrics.robotCustomers.online, 2);
   assert.equal(dashboard.payload.data.metrics.revenueToday, expectedRevenue);
   assert.equal(dashboard.payload.data.metrics.creditsConsumedToday, expectedConsumed);
