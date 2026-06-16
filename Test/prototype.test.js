@@ -93,6 +93,10 @@ function customerByDisplayName(displayName) {
   `).get(displayName);
 }
 
+function robotReplyReadyTime() {
+  return new Date(Date.now() + 61_000);
+}
+
 before(start);
 after(stop);
 
@@ -468,7 +472,10 @@ test('real customer can chat with a robot customer that answers autonomously', a
   );
   assert.equal(sent.response.status, 201);
   assert.equal(sent.payload.data.robotReply, null);
-  app.processRobotReplies(new Date(), 10);
+  const immediate = app.processRobotReplies(new Date(), 10);
+  assert.equal(immediate.sent, 0);
+  assert.equal(app.robotQueueSnapshot().queueLength, 1);
+  app.processRobotReplies(robotReplyReadyTime(), 10);
   const stored = app.db
     .prepare(`
       SELECT * FROM ChatRecords
@@ -479,6 +486,7 @@ test('real customer can chat with a robot customer that answers autonomously', a
     .get(conversation.payload.data.conversationId, robot.customerId);
   assert.equal(stored.ActingEmployeeId, null);
   assert.equal(stored.ResponseSource, 'RobotLocal');
+  assert.match(stored.Text, /work|energy|evening|tired|pressure|unwind|lighter/iu);
   assert.equal(
     app.db.prepare('SELECT COUNT(*) AS count FROM EmployeeSeed WHERE CustomerId = ?')
       .get(robot.customerId).count,
@@ -488,6 +496,58 @@ test('real customer can chat with a robot customer that answers autonomously', a
     .run(sent.payload.data.chatRecordId);
   app.db.prepare('DELETE FROM ChatRecords WHERE ChatRecordId IN (?, ?)')
     .run(sent.payload.data.chatRecordId, stored.ChatRecordId);
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+});
+
+test('robot local replies vary by customer topic and recent history', async () => {
+  const cookie = await loginCustomer();
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+  const robot = { customerId: currentRobotIdBySex('Woman') };
+  app.db.prepare(`
+    UPDATE Conversations
+    SET UpdatedAt = ?
+    WHERE CustomerAId = ? OR CustomerBId = ?
+  `).run(
+    new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    robot.customerId,
+    robot.customerId
+  );
+  const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
+    method: 'POST',
+    headers: { Cookie: cookie }
+  });
+  const messages = [
+    ['topic-work', 'My work meeting was stressful and I am tired tonight.', /work|energy|evening|tired|pressure|unwind|lighter/iu],
+    ['topic-food', 'I cooked dinner and made coffee after trying sourdough.', /food|meal|cooking|flavor|table|coffee|dish/iu],
+    ['topic-beach', 'I miss the beach and the ocean waves at sunset.', /ocean|beach|waves|water|sky|sand|sunset/iu]
+  ];
+  const replies = [];
+  for (const [key, text, pattern] of messages) {
+    const sent = await request(
+      `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Idempotency-Key': key },
+        body: { text }
+      }
+    );
+    assert.equal(sent.response.status, 201);
+    const immediate = app.processRobotReplies(new Date(), 10);
+    assert.equal(immediate.sent, 0);
+    app.processRobotReplies(robotReplyReadyTime(), 10);
+    const reply = app.db.prepare(`
+      SELECT * FROM ChatRecords
+      WHERE ConversationId = ? AND SenderId = ?
+      ORDER BY ChatTime DESC
+      LIMIT 1
+    `).get(conversation.payload.data.conversationId, robot.customerId);
+    assert.equal(reply.ResponseSource, 'RobotLocal');
+    assert.match(reply.Text, pattern);
+    replies.push(reply.Text);
+  }
+  assert.equal(new Set(replies).size, replies.length);
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
 });
@@ -562,7 +622,7 @@ test('off-line robot waits to answer until it is online', async () => {
     shiftStart.toISOString()
   );
 
-  const processed = app.processRobotReplies(new Date(), 10);
+  const processed = app.processRobotReplies(robotReplyReadyTime(), 10);
   assert.equal(processed.sent, 1);
   stored = app.db.prepare(`
     SELECT COUNT(*) AS value FROM ChatRecords
@@ -656,7 +716,7 @@ test('one robot customer can chat with 10 real customers at the same time', asyn
 
   assert.ok(sends.every((result) => result.response.status === 201));
   assert.ok(sends.every((result) => result.payload.data.robotReply === null));
-  app.processRobotReplies(new Date(), 20);
+  app.processRobotReplies(robotReplyReadyTime(), 20);
   assert.ok(app.robotQueueSnapshot().cachedCustomers >= 10);
 
   const conversationIds = conversations.map(

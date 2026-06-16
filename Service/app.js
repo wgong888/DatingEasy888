@@ -23,6 +23,7 @@ const MESSAGE_COST = 5;
 const MAX_MESSAGE_WORDS = 60;
 const MAX_BODY_BYTES = 1_000_000;
 const ROBOT_WORKER_INTERVAL_MS = 60_000;
+const DEFAULT_ROBOT_RESPONSE_DELAY_SECONDS = 60;
 const CUSTOMER_TYPE = Object.freeze({
   REAL: 0,
   SEED: 1,
@@ -1014,6 +1015,7 @@ function createRobotRequestQueue(db) {
   const queuedChatIds = new Set();
   let processing = false;
   let scheduled = false;
+  let delayedWakeTimer = null;
 
   function cachedCustomerInfo(customerId) {
     if (!customerInfoById.has(customerId)) {
@@ -1025,17 +1027,48 @@ function createRobotRequestQueue(db) {
   function enqueue(request, options = {}) {
     const incomingChatRecordId = request.incomingChatRecordId || request.IncomingChatRecordId;
     if (!incomingChatRecordId || queuedChatIds.has(incomingChatRecordId)) return false;
+    const conversationId = request.conversationId || request.ConversationId;
+    const requestedAt = request.requestedAt || request.IncomingChatTime || new Date().toISOString();
+    const configuredDelay = Number(
+      getPolicy(db, 'robot_response_delay_seconds', DEFAULT_ROBOT_RESPONSE_DELAY_SECONDS).value
+    );
+    const delaySeconds = Math.max(
+      0,
+      Number.isFinite(configuredDelay) ? configuredDelay : DEFAULT_ROBOT_RESPONSE_DELAY_SECONDS
+    );
+    const dueAt = new Date(Date.parse(requestedAt) + delaySeconds * 1000).toISOString();
+    for (let index = queue.length - 1; index >= 0; index -= 1) {
+      if (queue[index].conversationId === conversationId) {
+        queuedChatIds.delete(queue[index].incomingChatRecordId);
+        queue.splice(index, 1);
+      }
+    }
     queue.push({
       robotId: request.robotId || request.CustomerId,
       realCustomerId: request.realCustomerId || request.RealCustomerId,
-      conversationId: request.conversationId || request.ConversationId,
+      conversationId,
       incomingChatRecordId,
       text: request.text || request.IncomingText,
-      requestedAt: request.requestedAt || new Date().toISOString()
+      requestedAt,
+      dueAt
     });
     queuedChatIds.add(incomingChatRecordId);
-    if (options.wake !== false) wake();
+    if (options.wake !== false) scheduleWake(dueAt);
     return true;
+  }
+
+  function scheduleWake(dueAt = new Date().toISOString()) {
+    const delayMs = Math.max(0, Date.parse(dueAt) - Date.now());
+    if (delayMs === 0) {
+      wake();
+      return;
+    }
+    if (delayedWakeTimer) clearTimeout(delayedWakeTimer);
+    delayedWakeTimer = setTimeout(() => {
+      delayedWakeTimer = null;
+      wake();
+    }, delayMs);
+    delayedWakeTimer.unref?.();
   }
 
   function wake() {
@@ -1051,15 +1084,20 @@ function createRobotRequestQueue(db) {
     });
   }
 
-  function process(limit = 50) {
+  function process(limit = 50, timestamp = new Date()) {
     if (processing) return { processed: 0, sent: 0, deferred: 0, queueLength: queue.length };
     processing = true;
     let processed = 0;
     let sent = 0;
     let deferred = 0;
+    const notReady = [];
     try {
       while (queue.length && processed < limit) {
         const request = queue.shift();
+        if (Date.parse(request.dueAt) > timestamp.getTime()) {
+          notReady.push(request);
+          continue;
+        }
         queuedChatIds.delete(request.incomingChatRecordId);
         processed += 1;
 
@@ -1096,8 +1134,14 @@ function createRobotRequestQueue(db) {
         }
       }
     } finally {
+      if (notReady.length) queue.unshift(...notReady);
       processing = false;
-      if (queue.length) wake();
+      if (queue.length) {
+        const nextDueAt = queue.reduce((minimum, item) => (
+          !minimum || Date.parse(item.dueAt) < Date.parse(minimum) ? item.dueAt : minimum
+        ), null);
+        scheduleWake(nextDueAt);
+      }
     }
     return { processed, sent, deferred, queueLength: queue.length };
   }
@@ -1105,12 +1149,17 @@ function createRobotRequestQueue(db) {
   function snapshot() {
     return {
       queueLength: queue.length,
+      readyQueueLength: queue.filter((item) => Date.parse(item.dueAt) <= Date.now()).length,
       cachedCustomers: customerInfoById.size,
       processing
     };
   }
 
-  return { enqueue, process, snapshot };
+  function close() {
+    if (delayedWakeTimer) clearTimeout(delayedWakeTimer);
+  }
+
+  return { enqueue, process, snapshot, close };
 }
 
 function pendingRobotMessages(db, timestamp = new Date(), limit = 50) {
@@ -1121,6 +1170,7 @@ function pendingRobotMessages(db, timestamp = new Date(), limit = 50) {
       robot.*,
       real.CustomerId AS RealCustomerId,
       latest.ChatRecordId AS IncomingChatRecordId,
+      latest.ChatTime AS IncomingChatTime,
       latest.Text AS IncomingText
     FROM RobotShiftSchedule s
     JOIN CustomerProfile robot ON robot.CustomerId = s.RobotCustomerId
@@ -1158,7 +1208,7 @@ function processPendingRobotRepliesWithQueue(db, robotQueue, timestamp = new Dat
   reconcileRobotOperations(db, timestamp);
   const pending = pendingRobotMessages(db, timestamp, limit);
   for (const row of pending) robotQueue.enqueue(row, { wake: false });
-  return robotQueue.process(limit);
+  return robotQueue.process(limit, timestamp);
 }
 
 function createApplication(options = {}) {
@@ -3728,6 +3778,7 @@ function createApplication(options = {}) {
     },
     close() {
       if (robotWorker) clearInterval(robotWorker);
+      robotQueue.close();
       db.close();
     }
   };

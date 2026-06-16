@@ -464,37 +464,185 @@ function firstName(customerInfo) {
   return String(customerInfo?.displayName || '').trim().split(/\s+/u)[0] || '';
 }
 
+function stableIndex(value, length) {
+  if (!length) return 0;
+  let hash = 0;
+  for (const char of String(value)) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return hash % length;
+}
+
+function recentRobotTexts(history) {
+  return history
+    .filter((message) => message.ResponseSource === 'RobotLocal' || message.ResponseSource === 'ExternalAISimulated')
+    .slice(-5)
+    .map((message) => String(message.Text || '').trim().toLowerCase());
+}
+
+function classifyTopic(value) {
+  const topics = [
+    ['memory', /\b(remember|earlier|before|continue|last time)\b/u],
+    ['work', /\b(work|job|office|boss|busy|stress|stressed|tired|shift|career|meeting)\b/u],
+    ['feelings', /\b(sad|lonely|alone|upset|hurt|depressed|angry|anxious|worry|worried|mood|bad day)\b/u],
+    ['travel', /\b(travel|trip|vacation|city|visit|kyoto|flight|hotel|road)\b/u],
+    ['beach', /\b(beach|ocean|sea|coast|waves|sand|sunset)\b/u],
+    ['mountain', /\b(mountain|hiking|trail|camping|forest|lake)\b/u],
+    ['romance', /\b(love|relationship|dating|heart|miss|together|care|romantic)\b/u],
+    ['flirt', /\b(flirt|kiss|cuddle|hug|tease|sexy|touch|desire|naughty)\b/u],
+    ['food', /\b(food|cook|cooking|dinner|lunch|breakfast|coffee|sourdough|restaurant|meal)\b/u],
+    ['weather', /\b(weather|rain|sunny|hot|cold|wind|cloud|storm)\b/u],
+    ['sports', /\b(sport|sports|lakers|game|team|basketball|football|baseball|soccer)\b/u],
+    ['art', /\b(art|watercolor|painting|music|movie|book|song|museum|draw|creative)\b/u],
+    ['style', /\b(cloth|clothes|dress|style|fashion|outfit|wear)\b/u],
+    ['city', /\b(city|downtown|neighborhood|countryside|village|suburb|local)\b/u],
+    ['greeting', /\b(hi|hello|hey|good morning|good evening|how are you)\b/u],
+    ['question', /\?/u]
+  ];
+  return topics.find(([, pattern]) => pattern.test(value))?.[0] || 'general';
+}
+
+const LOCAL_REPLY_BANK = Object.freeze({
+  greeting: [
+    'Hi{name}. I am here with you. What kind of mood are you bringing into this chat?',
+    'Hello{name}. I am glad you stopped by. Do you want something light, sweet, or thoughtful tonight?',
+    'Hey{name}. Tell me one small thing about your day before we choose where this conversation goes.',
+    'Hi{name}. I like a warm start. What would make this chat feel good for you right now?'
+  ],
+  feelings: [
+    'I hear that this feels heavy{name}. Do you want to talk through what happened, or would a softer distraction help more?',
+    'That sounds tender. What part has been sitting with you the most?',
+    'I am listening{name}. We can slow down and take it one piece at a time.',
+    'It makes sense that your mood would feel crowded. What would help you feel a little steadier tonight?',
+    'Thank you for saying it plainly. Do you want comfort, advice, or just someone to stay with the feeling for a minute?'
+  ],
+  work: [
+    'That sounds like a lot to carry{name}. What part of work took the most energy from you today?',
+    'A long workday can follow you home. What would help the rest of the evening feel lighter?',
+    'I can hear the tiredness in that. Was it the people, the pace, or the pressure that got to you most?',
+    'Work stress can make everything feel tight. Tell me the one moment you wish had gone differently.',
+    'You deserve a softer landing after that. What kind of conversation would help you unwind?'
+  ],
+  romance: [
+    'That has a sweet feeling to it{name}. What does being cared for look like to you in small everyday ways?',
+    'I like when a conversation gets honest about connection. What makes you feel close to someone?',
+    'That sounds like your heart is asking for something real. What kind of attention matters most to you?',
+    'Romance feels best when it is unhurried. What would make you feel seen tonight?',
+    'I can stay with that thought. Do you usually open your heart quickly or carefully?'
+  ],
+  flirt: [
+    'You are making the conversation warmer{name}. Should we keep it playful or turn it a little more intimate?',
+    'That is a bold little spark. What kind of teasing makes you smile without rushing things?',
+    'I like playful energy when it still feels respectful. Tell me what kind of attention you enjoy most.',
+    'You have my attention. Do you want sweet flirting, confident flirting, or something softer?',
+    'That made me smile. Let us keep the mood warm and easy. What would you say next if we were sitting close?'
+  ],
+  travel: [
+    'That sounds like a good conversation to wander into{name}. What part of the trip feels most alive in your mind?',
+    'Travel says a lot about a person. Do you like plans, surprises, or a mix of both?',
+    'I can picture the mood of that. What would you want to do first when you arrive?',
+    'A change of place can change the whole heart. What are you hoping to feel there?',
+    'That destination has a nice pull. Would you go for food, scenery, quiet, or adventure?'
+  ],
+  beach: [
+    'The ocean has a calming kind of honesty. Do you like the beach more for quiet, walking, or watching the light change?',
+    'That beach mood sounds peaceful{name}. What do you notice first: the water, the sky, or the people around you?',
+    'Waves can make a conversation slower in a good way. What would you want beside you there?',
+    'I like that image. Does the beach make you feel relaxed, playful, or thoughtful?'
+  ],
+  mountain: [
+    'Mountains make people breathe differently. Would you want a quiet trail, a view, or a long easy talk while walking?',
+    'That sounds grounding{name}. What kind of place helps your mind settle down?',
+    'A simple hike can clear a lot. Do you go for the challenge or for the silence?',
+    'I like the feeling of that. What would you pack for a day that was only about peace?'
+  ],
+  food: [
+    'Food can make an ordinary day warmer. What flavor or meal always puts you in a better mood?',
+    'That sounds comforting{name}. Do you enjoy cooking more for yourself or for someone you like?',
+    'A good meal is a gentle kind of care. What would you want to share across the table?',
+    'I like hearing about food because it always leads to memory. What dish feels like home to you?',
+    'Coffee and dinner conversations both have their own mood. Which one fits tonight for you?'
+  ],
+  weather: [
+    'Weather changes the whole feeling of a day. Does this kind of day make you want to go out or stay close to home?',
+    'I like how weather can shift a mood{name}. What does it make you want tonight?',
+    'That sounds like a scene. Would you rather walk through it, watch it from a window, or ignore it with a good chat?',
+    'Rain, sun, or wind can all become a memory. What kind of weather makes you feel most alive?'
+  ],
+  sports: [
+    'Following a team can make the week more fun. What keeps you watching even when the game gets tense?',
+    'I like the energy in that{name}. Are you more loyal to the team, the players, or the shared excitement?',
+    'Sports can turn strangers into instant friends. What is your favorite kind of game night?',
+    'That sounds fun. Do you like talking strategy, cheering, or just enjoying the moment?'
+  ],
+  art: [
+    'I like hearing what catches your eye{name}. What feeling do you hope the picture or music keeps?',
+    'Creative things tell on us in a beautiful way. What kind of art or music matches your mood lately?',
+    'That sounds personal. Do you like art that calms you, surprises you, or says what words cannot?',
+    'I would like to know more about that. What made it stay in your mind?'
+  ],
+  style: [
+    'Style is such a quiet form of confidence. What do you wear when you want to feel most like yourself?',
+    'That has personality{name}. Do you dress more for comfort, attraction, or the mood of the day?',
+    'Clothes can change how a moment feels. What look makes you feel relaxed but noticed?',
+    'I like that topic. Is your style simple, playful, polished, or always changing?'
+  ],
+  city: [
+    'Life{place} can have so many small moods. What part of your neighborhood feels most like you?',
+    'City and quiet places both have a pull. Which one gives you more energy lately?',
+    'I like local details{name}. What place nearby would you choose for an easy first conversation?',
+    'That makes me curious about your everyday world. What is one corner of the city you never get tired of?'
+  ],
+  memory: [
+    'I remember {memory}. What feels most important about it now?',
+    'Yes, {memory} stayed with me. Has anything changed since you mentioned it?',
+    'I remember that: {memory}. Do you want to continue from there or tell me the newest part?',
+    'That earlier detail mattered: {memory}. What made you think about it again?'
+  ],
+  question: [
+    'That is a good question{name}. My honest answer is that the feeling behind it matters most. What made you ask?',
+    'I would answer carefully: start with what feels true, then keep the pressure low. How does it feel to you?',
+    'I think the answer depends on what you want from the moment. Are you hoping for comfort, clarity, or a little fun?',
+    'Good question. I want to understand your side first, because the details change the answer.'
+  ],
+  general: [
+    'I am glad you shared that{name}. What part would you like to talk about a little more?',
+    'There is something interesting in the way you said that. Tell me the part you almost left out.',
+    'I want to follow your thread{name}. What should I understand about that first?',
+    'That gives us a place to begin. Do you want to keep it light or go a little deeper?',
+    'I am here with you. What feeling is underneath that thought?',
+    'That sounds worth staying with for a moment. What happened next?'
+  ]
+});
+
+function fillTemplate(template, context) {
+  return template
+    .replaceAll('{name}', context.name ? `, ${context.name}` : '')
+    .replaceAll('{place}', context.place || '')
+    .replaceAll('{memory}', context.memory || 'what you shared earlier');
+}
+
+function chooseLocalReply(topic, text, history, context) {
+  const bank = LOCAL_REPLY_BANK[topic] || LOCAL_REPLY_BANK.general;
+  const used = recentRobotTexts(history);
+  const seed = `${topic}|${text}|${history.length}|${context.memory || ''}`;
+  for (let offset = 0; offset < bank.length; offset += 1) {
+    const candidate = fillTemplate(bank[(stableIndex(seed, bank.length) + offset) % bank.length], context);
+    if (!used.includes(candidate.toLowerCase())) return candidate;
+  }
+  return fillTemplate(bank[stableIndex(`${seed}|fallback`, bank.length)], context);
+}
+
 function localResponse(text, history, customerInfo = null) {
   const value = String(text).toLowerCase();
   const memory = findMemoryMarker(history);
   const name = firstName(customerInfo);
   const place = customerInfo?.city ? ` in ${customerInfo.city}` : '';
   if (/\b(remember|earlier|before|continue)\b/u.test(value) && memory) {
-    return `I remember ${memory}. What feels most interesting about it now?`;
+    return chooseLocalReply('memory', text, history, { name, place, memory });
   }
-  if (/\b(work|job|busy|stress|tired|shift)\b/u.test(value)) {
-    return 'That sounds like a lot to carry. What would help the rest of your day feel a little lighter?';
-  }
-  if (/\b(travel|trip|city|beach|mountain|kyoto|hiking)\b/u.test(value)) {
-    return 'That is a good conversation to wander into. Which part of that plan feels most inviting to you?';
-  }
-  if (/\b(food|cook|dinner|coffee|sourdough)\b/u.test(value)) {
-    return 'Food can make an ordinary day feel warmer. What part of making it do you enjoy most?';
-  }
-  if (/\b(sad|lonely|upset|hurt)\b/u.test(value)) {
-    return 'I hear that this has been difficult. Would you rather talk about what happened or choose a gentler topic for a while?';
-  }
-  if (/\b(art|watercolor|painting)\b/u.test(value)) {
-    return 'I like hearing what catches your eye. What feeling do you hope the picture keeps?';
-  }
-  if (/\b(sport|lakers|game)\b/u.test(value)) {
-    return 'Following a team can make an ordinary week more fun. What keeps you watching?';
-  }
-  if (memory) return `I remember ${memory}. Tell me what has changed since you mentioned it.`;
-  if (name || place) {
-    return `I am glad you shared that${name ? `, ${name}` : ''}. What part of life${place} would you like to talk about a little more?`;
-  }
-  return 'I am glad you shared that. What part would you like to talk about a little more?';
+  const topic = classifyTopic(value);
+  return chooseLocalReply(topic, text, history, { name, place, memory });
 }
 
 function estimateTokens(text) {

@@ -16,6 +16,10 @@ let server;
 let origin;
 let tempDirectory;
 
+function robotReplyReadyTime() {
+  return new Date(Date.now() + 61_000);
+}
+
 async function request(pathname, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body) headers['Content-Type'] = 'application/json';
@@ -328,7 +332,7 @@ test('hybrid mode records simulated outside AI usage and local mode does not', a
     }
   );
   assert.equal(hybrid.payload.data.robotReply, null);
-  app.processRobotReplies(new Date(), 10);
+  app.processRobotReplies(robotReplyReadyTime(), 10);
   let latestRobotMessage = app.db.prepare(`
     SELECT * FROM ChatRecords
     WHERE ConversationId = ? AND SenderId = ?
@@ -352,7 +356,7 @@ test('hybrid mode records simulated outside AI usage and local mode does not', a
     }
   );
   assert.equal(local.payload.data.robotReply, null);
-  app.processRobotReplies(new Date(), 10);
+  app.processRobotReplies(robotReplyReadyTime(), 10);
   latestRobotMessage = app.db.prepare(`
     SELECT * FROM ChatRecords
     WHERE ConversationId = ? AND SenderId = ?
@@ -415,7 +419,7 @@ test('one headless robot handles ten customers for thirteen accelerated chat rou
     )));
     assert.ok(sends.every((result) => result.response.status === 201));
     assert.ok(sends.every((result) => result.payload.data.robotReply === null));
-    app.processRobotReplies(new Date(), 20);
+    app.processRobotReplies(robotReplyReadyTime(), 20);
     const robotReplies = app.db.prepare(`
       SELECT COUNT(*) AS value FROM ChatRecords
       WHERE ConversationId IN (${placeholders}) AND SenderId = ?

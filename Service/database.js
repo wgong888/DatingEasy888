@@ -767,6 +767,12 @@ function seedDatabase(db) {
       'Robot AI monthly budget',
       'Maximum estimated outside AI cost per UTC month.',
       '500'
+    ],
+    [
+      'robot_response_delay_seconds',
+      'Robot response delay seconds',
+      'Minimum delay before a robot may answer a customer message.',
+      '60'
     ]
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, created, created);
@@ -984,6 +990,12 @@ function ensureRobotPrototypeData(db) {
       'Robot AI monthly budget',
       'Maximum estimated outside AI cost per UTC month.',
       '500'
+    ],
+    [
+      'robot_response_delay_seconds',
+      'Robot response delay seconds',
+      'Minimum delay before a robot may answer a customer message.',
+      '60'
     ]
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, timestamp, timestamp);
