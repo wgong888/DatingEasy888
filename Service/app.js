@@ -1993,14 +1993,11 @@ function createApplication(options = {}) {
 
       db.exec('BEGIN IMMEDIATE');
       try {
-        const activeReceiver = db.prepare(`
+        const receiverProfile = db.prepare(`
           SELECT CustomerId, Seed, Active
           FROM CustomerProfile
           WHERE CustomerId = ?
         `).get(receiverId);
-        if (!activeReceiver?.Active) {
-          throw new ApiError(409, 'CHAT_TARGET_INACTIVE', 'This customer is not active right now.');
-        }
         const debit = db.prepare(`
           UPDATE CustomerProfile
           SET CreditsRemain = CreditsRemain - ?
@@ -2045,9 +2042,9 @@ function createApplication(options = {}) {
           'Prototype five-credit text message'
         );
         let robotReply = null;
-        if (activeReceiver.Seed === CUSTOMER_TYPE.ROBOT) {
+        if (receiverProfile?.Seed === CUSTOMER_TYPE.ROBOT && receiverProfile.Active) {
           robotQueueRequest = {
-            robotId: activeReceiver.CustomerId,
+            robotId: receiverProfile.CustomerId,
             realCustomerId: session.PrincipalId,
             conversationId: params.conversationId,
             incomingChatRecordId: chatRecordId,

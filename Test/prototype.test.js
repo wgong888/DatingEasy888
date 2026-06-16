@@ -449,7 +449,7 @@ test('real customer can chat with another real customer', async () => {
     .run();
 });
 
-test('customer text send rejects inactive targets without charge or chat record', async () => {
+test('customer text send stores and charges even when target is inactive', async () => {
   const cookie = await loginCustomer();
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
@@ -490,11 +490,12 @@ test('customer text send rejects inactive targets without charge or chat record'
     {
       method: 'POST',
       headers: { Cookie: cookie, 'Idempotency-Key': 'inactive-target-chat' },
-      body: { text: 'This message should not be charged or delivered.' }
+      body: { text: 'This message should still be saved while you are away.' }
     }
   );
-  assert.equal(sent.response.status, 409);
-  assert.equal(sent.payload.error.code, 'CHAT_TARGET_INACTIVE');
+  assert.equal(sent.response.status, 201);
+  assert.equal(sent.payload.data.creditUsed, 5);
+  assert.equal(sent.payload.data.creditBalance, balanceBefore - 5);
   const balanceAfter = app.db
     .prepare("SELECT CreditsRemain FROM CustomerProfile WHERE Email = 'demo@datingeasy.test'")
     .get().CreditsRemain;
@@ -503,10 +504,17 @@ test('customer text send rejects inactive targets without charge or chat record'
     FROM ChatRecords
     WHERE ConversationId = ?
   `).get(conversation.payload.data.conversationId).value;
-  assert.equal(balanceAfter, balanceBefore);
-  assert.equal(recordCountAfter, recordCountBefore);
+  const stored = app.db
+    .prepare('SELECT * FROM ChatRecords WHERE ChatRecordId = ?')
+    .get(sent.payload.data.chatRecordId);
+  assert.equal(balanceAfter, balanceBefore - 5);
+  assert.equal(recordCountAfter, recordCountBefore + 1);
+  assert.equal(stored.Text, 'This message should still be saved while you are away.');
+  assert.equal(stored.ReceiverId, registered.payload.data.customerId);
   app.db.prepare('UPDATE CustomerProfile SET Active = 1 WHERE CustomerId = ?')
     .run(registered.payload.data.customerId);
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
 });
 
 test('real customer can chat with a robot customer that answers autonomously', async () => {
