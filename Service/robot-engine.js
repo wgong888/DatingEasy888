@@ -491,8 +491,64 @@ function stableIndex(value, length) {
 function recentRobotTexts(history) {
   return history
     .filter((message) => message.ResponseSource === 'RobotLocal' || message.ResponseSource === 'ExternalAISimulated')
-    .slice(-5)
+    .slice(-8)
     .map((message) => String(message.Text || '').trim().toLowerCase());
+}
+
+const REPLY_SIMILARITY_STOP_WORDS = new Set([
+  'about',
+  'after',
+  'again',
+  'because',
+  'before',
+  'being',
+  'could',
+  'does',
+  'feel',
+  'from',
+  'have',
+  'here',
+  'into',
+  'like',
+  'more',
+  'most',
+  'that',
+  'there',
+  'this',
+  'what',
+  'when',
+  'where',
+  'which',
+  'with',
+  'would',
+  'your'
+]);
+
+function replyTokens(text) {
+  return new Set(
+    String(text || '')
+      .toLowerCase()
+      .replaceAll(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/u)
+      .filter((word) => word.length > 3 && !REPLY_SIMILARITY_STOP_WORDS.has(word))
+  );
+}
+
+function replySimilarity(left, right) {
+  const leftTokens = replyTokens(left);
+  const rightTokens = replyTokens(right);
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) overlap += 1;
+  }
+  const smaller = Math.min(leftTokens.size, rightTokens.size);
+  return overlap / smaller;
+}
+
+function recentlyUsedReply(candidate, used) {
+  const normalized = candidate.trim().toLowerCase();
+  return used.some((text) => text === normalized || replySimilarity(candidate, text) >= 0.72);
 }
 
 function classifyTopic(value) {
@@ -524,7 +580,9 @@ const LOCAL_REPLY_BANK = Object.freeze({
     'Hi{name}. I am here with you. What kind of mood are you bringing into this chat?',
     'Hello{name}. I am glad you stopped by. Do you want something light, sweet, or thoughtful tonight?',
     'Hey{name}. Tell me one small thing about your day before we choose where this conversation goes.',
-    'Hi{name}. I like a warm start. What would make this chat feel good for you right now?'
+    'Hi{name}. I like a warm start. What would make this chat feel good for you right now?',
+    'Hello{name}. I was hoping for an easy conversation. What should I know about your evening?',
+    'Hey{name}. I am listening. Do you want to begin with your day, your mood, or something playful?'
   ],
   feelings: [
     'I hear that this feels heavy{name}. Do you want to talk through what happened, or would a softer distraction help more?',
@@ -613,12 +671,16 @@ const LOCAL_REPLY_BANK = Object.freeze({
   profileAge: [
     'I am {robotAge}. What age range do you usually feel most comfortable talking with?',
     'My profile age is {robotAge}. Does age matter much to you when the conversation feels easy?',
-    'I am {robotAge}. I care more about the rhythm of a conversation than the number, but it is fair to ask.'
+    'I am {robotAge}. I care more about the rhythm of a conversation than the number, but it is fair to ask.',
+    '{robotAge} is the number on my profile. I am more curious about what makes two people feel comfortable.',
+    'My age is {robotAge}. For me, kindness and timing matter more than counting years.'
   ],
   profileLocation: [
     'I am based in {robotPlace}. What part of your city feels most like home to you?',
     'My profile is in {robotPlace}. Do you like city life, or do you prefer quieter places?',
-    'I am from {robotPlace}. What kind of local place would you choose for an easy conversation?'
+    'I am from {robotPlace}. What kind of local place would you choose for an easy conversation?',
+    '{robotPlace} is home base for me. What place near you has the best feeling after a long day?',
+    'I live around {robotPlace}. If we were choosing a relaxed first stop, would you pick coffee, dinner, or a walk?'
   ],
   memory: [
     'I remember {memory}. What feels most important about it now?',
@@ -630,7 +692,9 @@ const LOCAL_REPLY_BANK = Object.freeze({
     'That is a good question{name}. My honest answer is that the feeling behind it matters most. What made you ask?',
     'I would answer carefully: start with what feels true, then keep the pressure low. How does it feel to you?',
     'I think the answer depends on what you want from the moment. Are you hoping for comfort, clarity, or a little fun?',
-    'Good question. I want to understand your side first, because the details change the answer.'
+    'Good question. I want to understand your side first, because the details change the answer.',
+    'I can answer that, but I want to catch the reason behind it too. Are you asking from curiosity or from a feeling?',
+    'Let me think with you for a second. The simple answer matters less than what you are hoping it opens.'
   ],
   general: [
     'I am glad you shared that{name}. What part would you like to talk about a little more?',
@@ -638,7 +702,10 @@ const LOCAL_REPLY_BANK = Object.freeze({
     'I want to follow your thread{name}. What should I understand about that first?',
     'That gives us a place to begin. Do you want to keep it light or go a little deeper?',
     'I am here with you. What feeling is underneath that thought?',
-    'That sounds worth staying with for a moment. What happened next?'
+    'That sounds worth staying with for a moment. What happened next?',
+    'I am following you. What detail would make the picture clearer for me?',
+    'That opens a few paths. Should we stay with the practical side or the feeling side?',
+    'Tell me the part that matters most to you, even if it seems small.'
   ]
 });
 
@@ -657,7 +724,7 @@ function chooseLocalReply(topic, text, history, context) {
   const seed = `${topic}|${text}|${history.length}|${context.memory || ''}`;
   for (let offset = 0; offset < bank.length; offset += 1) {
     const candidate = fillTemplate(bank[(stableIndex(seed, bank.length) + offset) % bank.length], context);
-    if (!used.includes(candidate.toLowerCase())) return candidate;
+    if (!recentlyUsedReply(candidate, used)) return candidate;
   }
   return fillTemplate(bank[stableIndex(`${seed}|fallback`, bank.length)], context);
 }

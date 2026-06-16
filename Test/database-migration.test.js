@@ -40,6 +40,11 @@ test('existing prototype data is upgraded with robot inventory and AI policies',
     UPDATE CustomerProfile SET StateId = 'TX', CityName = 'Austin'
     WHERE Seed = 2
   `).run();
+  db.prepare(`
+    UPDATE PolicyDefinitions
+    SET PolicyValue = '30'
+    WHERE PolicyKey = 'robot_response_delay_seconds'
+  `).run();
   db.close();
 
   db = openDatabase(databasePath);
@@ -67,6 +72,13 @@ test('existing prototype data is upgraded with robot inventory and AI policies',
       WHERE PolicyKey LIKE 'robot_ai_%'
     `).get().value,
     3
+  );
+  assert.equal(
+    db.prepare(`
+      SELECT PolicyValue FROM PolicyDefinitions
+      WHERE PolicyKey = 'robot_response_delay_seconds'
+    `).get().PolicyValue,
+    '15'
   );
   db.close();
   fs.rmSync(directory, { recursive: true, force: true });

@@ -324,6 +324,7 @@ function openDatabase(databasePath = DEFAULT_DB_PATH) {
   migrateCustomerProfile(db);
   migrateEmployeeProfile(db);
   migrateChargeRecord(db);
+  migratePolicyDefaults(db);
   seedDatabase(db);
   ensureTestEmployeeAccounts(db);
   ensurePlatformInitialData(db);
@@ -512,6 +513,17 @@ function migrateChargeRecord(db) {
       db.exec(`ALTER TABLE ChargeRecord ADD COLUMN ${name} ${definition}`);
     }
   }
+}
+
+function migratePolicyDefaults(db) {
+  db.prepare(`
+    UPDATE PolicyDefinitions
+    SET PolicyValue = '15',
+        Version = Version + 1,
+        UpdateTime = ?
+    WHERE PolicyKey = 'robot_response_delay_seconds'
+      AND PolicyValue = '30'
+  `).run(now());
 }
 
 function seedDatabase(db) {
@@ -772,7 +784,7 @@ function seedDatabase(db) {
       'robot_response_delay_seconds',
       'Robot response delay seconds',
       'Minimum delay before a robot may answer a customer message.',
-      '30'
+      '15'
     ]
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, created, created);
@@ -995,7 +1007,7 @@ function ensureRobotPrototypeData(db) {
       'robot_response_delay_seconds',
       'Robot response delay seconds',
       'Minimum delay before a robot may answer a customer message.',
-      '30'
+      '15'
     ]
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, timestamp, timestamp);

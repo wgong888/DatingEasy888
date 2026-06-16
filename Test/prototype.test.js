@@ -94,7 +94,7 @@ function customerByDisplayName(displayName) {
 }
 
 function robotReplyReadyTime() {
-  return new Date(Date.now() + 31_000);
+  return new Date(Date.now() + 16_000);
 }
 
 before(start);
@@ -673,6 +673,54 @@ test('robot answers profile location and age questions from its profile', async 
     assert.equal(reply.ResponseSource, 'RobotLocal');
     assert.match(reply.Text, pattern);
   }
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+});
+
+test('robot avoids repeating profile answer phrases too close together', async () => {
+  const cookie = await loginCustomer();
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+  const robot = app.db.prepare(`
+    SELECT CustomerId AS customerId
+    FROM CustomerProfile
+    WHERE CustomerId = ?
+  `).get(currentRobotIdBySex('Woman'));
+  app.db.prepare(`
+    UPDATE Conversations
+    SET UpdatedAt = ?
+    WHERE CustomerAId = ? OR CustomerBId = ?
+  `).run(
+    new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    robot.customerId,
+    robot.customerId
+  );
+  const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
+    method: 'POST',
+    headers: { Cookie: cookie }
+  });
+  const replies = [];
+  for (let index = 0; index < 3; index += 1) {
+    const sent = await request(
+      `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Idempotency-Key': `repeat-age-${index}` },
+        body: { text: 'How old are you?' }
+      }
+    );
+    assert.equal(sent.response.status, 201);
+    app.processRobotReplies(robotReplyReadyTime(), 10);
+    const reply = app.db.prepare(`
+      SELECT Text FROM ChatRecords
+      WHERE ConversationId = ? AND SenderId = ?
+      ORDER BY ChatTime DESC
+      LIMIT 1
+    `).get(conversation.payload.data.conversationId, robot.customerId);
+    replies.push(reply.Text);
+  }
+  assert.equal(new Set(replies).size, replies.length);
+  assert.ok(replies.every((reply) => !reply.startsWith(replies[0].slice(0, 16)) || reply === replies[0]));
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
 });
