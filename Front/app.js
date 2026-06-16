@@ -13,6 +13,7 @@ const state = {
   previousListView: 'discover',
   discoveryTimer: null,
   chatPollTimer: null,
+  chatFollowupTimers: [],
   discoverLocations: null,
   discoveryRequestId: 0,
   activeConversationSignature: ''
@@ -538,6 +539,21 @@ async function refreshActiveConversation() {
   loadConversations().catch((error) => showToast(error.message));
 }
 
+function scheduleActiveChatFollowups() {
+  state.chatFollowupTimers.forEach((timer) => clearTimeout(timer));
+  state.chatFollowupTimers = [3_000, 8_000, 15_000, 24_000, 31_000, 36_000, 45_000]
+    .map((delay) => setTimeout(() => {
+      refreshActiveConversation().catch((error) => {
+        if (error.status !== 401) showToast(error.message);
+      });
+    }, delay));
+}
+
+function clearActiveChatFollowups() {
+  state.chatFollowupTimers.forEach((timer) => clearTimeout(timer));
+  state.chatFollowupTimers = [];
+}
+
 async function sendMessage(form) {
   const text = new FormData(form).get('text').trim();
   if (!text) return;
@@ -557,6 +573,7 @@ async function sendMessage(form) {
     form.reset();
     await openConversation(conversationId);
     await loadConversations();
+    scheduleActiveChatFollowups();
   } catch (error) {
     if (error.code === 'INSUFFICIENT_CREDITS') {
       showToast('Message not sent. You need at least 5 credits.');
@@ -732,6 +749,7 @@ document.addEventListener('click', async (event) => {
     if (target.matches('[data-close-dialog]')) return target.closest('dialog').close();
     if (target.matches('[data-close-chat]')) {
       state.activeConversationId = null;
+      clearActiveChatFollowups();
       $('#conversation-panel').className = 'conversation-panel empty-state';
       $('#conversation-panel').innerHTML = '<div><span class="empty-icon">✉</span><h2>Choose a conversation</h2><p>Your messages will appear here.</p></div>';
       return;
@@ -745,6 +763,8 @@ document.addEventListener('click', async (event) => {
       return await withButtonBusy(target, async () => {
         await api('/api/v1/auth/logout', { method: 'POST' });
         state.me = null;
+        state.activeConversationId = null;
+        clearActiveChatFollowups();
         showAuthentication();
         showToast('Signed out');
       });
