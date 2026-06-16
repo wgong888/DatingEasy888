@@ -552,6 +552,59 @@ test('robot local replies vary by customer topic and recent history', async () =
     .run();
 });
 
+test('robot answers profile location and age questions from its profile', async () => {
+  const cookie = await loginCustomer();
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+  const robot = app.db.prepare(`
+    SELECT CustomerId AS customerId, CityName AS cityName, BirthDate AS birthDate
+    FROM CustomerProfile
+    WHERE CustomerId = ?
+  `).get(currentRobotIdBySex('Woman'));
+  assert.ok(robot);
+  app.db.prepare(`
+    UPDATE Conversations
+    SET UpdatedAt = ?
+    WHERE CustomerAId = ? OR CustomerBId = ?
+  `).run(
+    new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    robot.customerId,
+    robot.customerId
+  );
+  const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
+    method: 'POST',
+    headers: { Cookie: cookie }
+  });
+  const robotAge = new Date().getUTCFullYear() - Number(robot.birthDate.slice(0, 4)) -
+    (new Date().toISOString().slice(5, 10) < robot.birthDate.slice(5, 10) ? 1 : 0);
+  const questions = [
+    ['profile-location-question', 'Where are you from?', new RegExp(robot.cityName, 'iu')],
+    ['profile-age-question', 'How old are you?', new RegExp(`\\b${robotAge}\\b`, 'iu')]
+  ];
+  for (const [key, text, pattern] of questions) {
+    const sent = await request(
+      `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Idempotency-Key': key },
+        body: { text }
+      }
+    );
+    assert.equal(sent.response.status, 201);
+    app.processRobotReplies(robotReplyReadyTime(), 10);
+    const reply = app.db.prepare(`
+      SELECT * FROM ChatRecords
+      WHERE ConversationId = ? AND SenderId = ?
+      ORDER BY ChatTime DESC
+      LIMIT 1
+    `).get(conversation.payload.data.conversationId, robot.customerId);
+    assert.equal(reply.ResponseSource, 'RobotLocal');
+    assert.match(reply.Text, pattern);
+  }
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+});
+
 test('off-line robot waits to answer until it is online', async () => {
   const cookie = await loginCustomer();
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")

@@ -464,6 +464,21 @@ function firstName(customerInfo) {
   return String(customerInfo?.displayName || '').trim().split(/\s+/u)[0] || '';
 }
 
+function ageFromBirthDate(birthDate, timestamp = new Date()) {
+  if (!birthDate) return null;
+  const birth = new Date(`${birthDate}T00:00:00Z`);
+  if (Number.isNaN(birth.getTime())) return null;
+  let age = timestamp.getUTCFullYear() - birth.getUTCFullYear();
+  const monthDifference = timestamp.getUTCMonth() - birth.getUTCMonth();
+  if (
+    monthDifference < 0 ||
+    (monthDifference === 0 && timestamp.getUTCDate() < birth.getUTCDate())
+  ) {
+    age -= 1;
+  }
+  return age;
+}
+
 function stableIndex(value, length) {
   if (!length) return 0;
   let hash = 0;
@@ -482,6 +497,8 @@ function recentRobotTexts(history) {
 
 function classifyTopic(value) {
   const topics = [
+    ['profileAge', /\b(how old|your age|age are you|age)\b/u],
+    ['profileLocation', /\b(where are you from|where do you live|where are you based|your city|from\?)\b/u],
     ['memory', /\b(remember|earlier|before|continue|last time)\b/u],
     ['work', /\b(work|job|office|boss|busy|stress|stressed|tired|shift|career|meeting)\b/u],
     ['feelings', /\b(sad|lonely|alone|upset|hurt|depressed|angry|anxious|worry|worried|mood|bad day)\b/u],
@@ -593,6 +610,16 @@ const LOCAL_REPLY_BANK = Object.freeze({
     'I like local details{name}. What place nearby would you choose for an easy first conversation?',
     'That makes me curious about your everyday world. What is one corner of the city you never get tired of?'
   ],
+  profileAge: [
+    'I am {robotAge}. What age range do you usually feel most comfortable talking with?',
+    'My profile age is {robotAge}. Does age matter much to you when the conversation feels easy?',
+    'I am {robotAge}. I care more about the rhythm of a conversation than the number, but it is fair to ask.'
+  ],
+  profileLocation: [
+    'I am based in {robotPlace}. What part of your city feels most like home to you?',
+    'My profile is in {robotPlace}. Do you like city life, or do you prefer quieter places?',
+    'I am from {robotPlace}. What kind of local place would you choose for an easy conversation?'
+  ],
   memory: [
     'I remember {memory}. What feels most important about it now?',
     'Yes, {memory} stayed with me. Has anything changed since you mentioned it?',
@@ -619,6 +646,8 @@ function fillTemplate(template, context) {
   return template
     .replaceAll('{name}', context.name ? `, ${context.name}` : '')
     .replaceAll('{place}', context.place || '')
+    .replaceAll('{robotAge}', context.robotAge || 'in my early thirties')
+    .replaceAll('{robotPlace}', context.robotPlace || 'Los Angeles')
     .replaceAll('{memory}', context.memory || 'what you shared earlier');
 }
 
@@ -633,16 +662,25 @@ function chooseLocalReply(topic, text, history, context) {
   return fillTemplate(bank[stableIndex(`${seed}|fallback`, bank.length)], context);
 }
 
-function localResponse(text, history, customerInfo = null) {
+function localResponse(text, history, customerInfo = null, robot = null, timestamp = new Date()) {
   const value = String(text).toLowerCase();
   const memory = findMemoryMarker(history);
   const name = firstName(customerInfo);
   const place = customerInfo?.city ? ` in ${customerInfo.city}` : '';
+  const robotAge = ageFromBirthDate(robot?.BirthDate, timestamp);
+  const robotPlace = [robot?.CityName, robot?.StateId].filter(Boolean).join(', ');
+  const context = {
+    name,
+    place,
+    memory,
+    robotAge: robotAge ? String(robotAge) : '',
+    robotPlace
+  };
   if (/\b(remember|earlier|before|continue)\b/u.test(value) && memory) {
-    return chooseLocalReply('memory', text, history, { name, place, memory });
+    return chooseLocalReply('memory', text, history, context);
   }
   const topic = classifyTopic(value);
-  return chooseLocalReply(topic, text, history, { name, place, memory });
+  return chooseLocalReply(topic, text, history, context);
 }
 
 function estimateTokens(text) {
@@ -687,7 +725,7 @@ function generateRobotReply(db, options) {
   const modePolicy = getPolicy(db, 'robot_ai_mode', 'LocalOnly');
   const externalCandidate = modePolicy.value === 'HybridExternalAllowed' &&
     /\b(why|feel|remember|earlier|relationship|confused|meaning|advice)\b/iu.test(text);
-  const replyText = localResponse(text, history, customerInfo);
+  const replyText = localResponse(text, history, customerInfo, robot, timestamp);
   const inputTokens = Math.min(
     2000,
     estimateTokens(JSON.stringify(history.map((item) => item.Text))) + estimateTokens(text) + 180

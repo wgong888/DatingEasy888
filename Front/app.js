@@ -12,8 +12,10 @@ const state = {
   currentView: 'messages',
   previousListView: 'discover',
   discoveryTimer: null,
+  chatPollTimer: null,
   discoverLocations: null,
-  discoveryRequestId: 0
+  discoveryRequestId: 0,
+  activeConversationSignature: ''
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -466,6 +468,19 @@ function renderGiftStrip() {
   `;
 }
 
+function messageSignature(messages) {
+  return messages.map((message) => message.chatRecordId).join('|');
+}
+
+function renderChatMessages(messages) {
+  return messages.map((message) => `
+    <div class="message ${message.senderId === state.me.customerId ? 'outgoing' : 'incoming'} ${message.messageType === 'Gift' ? 'gift-message' : ''}">
+      ${escapeHtml(message.text)}
+      <time>${formatTime(message.chatTime)}${message.creditUsed ? ` · ${message.creditUsed} credits` : ''}</time>
+    </div>
+  `).join('');
+}
+
 async function openConversation(conversationId) {
   state.activeConversationId = conversationId;
   renderConversationList();
@@ -473,6 +488,7 @@ async function openConversation(conversationId) {
   panel.classList.remove('empty-state');
   panel.innerHTML = '<div class="panel-loading">Opening conversation…</div>';
   const data = await api(`/api/v1/customer/conversations/${conversationId}/messages`);
+  state.activeConversationSignature = messageSignature(data.messages);
   state.activeChatPartner = data.otherCustomer;
   renderConversationList();
   panel.innerHTML = `
@@ -490,16 +506,11 @@ async function openConversation(conversationId) {
         title="${data.otherCustomer.favorite ? 'Remove favorite' : 'Add favorite'}">♥</button>
     </header>
     <div class="chat-messages">
-      ${data.messages.map((message) => `
-        <div class="message ${message.senderId === state.me.customerId ? 'outgoing' : 'incoming'} ${message.messageType === 'Gift' ? 'gift-message' : ''}">
-          ${escapeHtml(message.text)}
-          <time>${formatTime(message.chatTime)}${message.creditUsed ? ` · ${message.creditUsed} credits` : ''}</time>
-        </div>
-      `).join('')}
+      ${renderChatMessages(data.messages)}
     </div>
     <form class="composer" data-composer>
       <textarea name="text" maxlength="500" placeholder="Write up to 60 words" aria-label="Message" required></textarea>
-      <button class="primary-button" type="button" data-send-message>Send</button>
+      <button class="primary-button" type="submit" data-send-message>Send</button>
       <div class="composer-meta"><span data-word-count>0 / 60 words</span><span>Balance: ${state.me.creditBalance}</span></div>
     </form>
     ${renderGiftStrip()}
@@ -508,6 +519,23 @@ async function openConversation(conversationId) {
     const messages = $('.chat-messages', panel);
     messages.scrollTop = messages.scrollHeight;
   });
+}
+
+async function refreshActiveConversation() {
+  if (state.currentView !== 'messages' || !state.activeConversationId) return;
+  const conversationId = state.activeConversationId;
+  const data = await api(`/api/v1/customer/conversations/${conversationId}/messages`);
+  if (conversationId !== state.activeConversationId || state.currentView !== 'messages') return;
+  const signature = messageSignature(data.messages);
+  if (signature === state.activeConversationSignature) return;
+  state.activeConversationSignature = signature;
+  state.activeChatPartner = data.otherCustomer;
+  const messages = $('#conversation-panel .chat-messages');
+  if (!messages) return;
+  const shouldStickToBottom = messages.scrollTop + messages.clientHeight >= messages.scrollHeight - 80;
+  messages.innerHTML = renderChatMessages(data.messages);
+  if (shouldStickToBottom) messages.scrollTop = messages.scrollHeight;
+  loadConversations().catch((error) => showToast(error.message));
 }
 
 async function sendMessage(form) {
@@ -527,8 +555,8 @@ async function sendMessage(form) {
     );
     setBalance(result.creditBalance);
     form.reset();
-    await loadConversations();
     await openConversation(conversationId);
+    await loadConversations();
   } catch (error) {
     if (error.code === 'INSUFFICIENT_CREDITS') {
       showToast('Message not sent. You need at least 5 credits.');
@@ -725,14 +753,6 @@ document.addEventListener('click', async (event) => {
     showToast(error.message);
   }
 });
-
-document.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-send-message]');
-  if (!button) return;
-  event.preventDefault();
-  event.stopPropagation();
-  sendMessage(button.closest('[data-composer]')).catch((error) => showToast(error.message));
-}, true);
 
 document.addEventListener('dblclick', (event) => {
   const avatar = event.target.closest('.conversation-item .mini-photo');
@@ -966,5 +986,11 @@ $('#credit-purchase-form').addEventListener('submit', (event) => {
     showToast(error.message);
   });
 });
+
+state.chatPollTimer = setInterval(() => {
+  refreshActiveConversation().catch((error) => {
+    if (error.status !== 401) showToast(error.message);
+  });
+}, 10_000);
 
 bootstrap();
