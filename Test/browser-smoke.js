@@ -149,6 +149,7 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('#credit-balance').filter({ hasText: '235' }).waitFor();
     await page.getByRole('button', { name: 'Discover', exact: true }).click();
     await page.locator('#search-input').fill('Grace');
+    await page.locator('#discover-filter-form').getByRole('button', { name: 'Search' }).click();
     await page.waitForFunction(() => {
       const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
       return cards.length > 0 && cards.every((card) => card.querySelector('h2')?.textContent.includes('Grace'));
@@ -157,6 +158,7 @@ async function customerFlow(browser, viewport, suffix) {
     await page.waitForFunction(() => document.querySelectorAll('#profile-grid .profile-card').length === 20);
     assert.equal(await page.locator('#profile-grid .profile-card').count(), 20);
     await page.locator('#search-input').fill('Grace');
+    await page.locator('#discover-filter-form').getByRole('button', { name: 'Search' }).click();
     await page.waitForFunction(() => {
       const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
       return cards.length > 0 && cards.every((card) => card.querySelector('h2')?.textContent.includes('Grace'));
@@ -167,6 +169,7 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('#favorite-grid .profile-card', { hasText: 'Grace' }).first().waitFor();
     await page.getByRole('button', { name: 'Discover', exact: true }).click();
     await page.locator('#search-input').fill('Grace');
+    await page.locator('#discover-filter-form').getByRole('button', { name: 'Search' }).click();
     await page.waitForFunction(() => {
       const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
       return cards.length > 0 && cards.every((card) => card.querySelector('h2')?.textContent.includes('Grace'));
@@ -254,6 +257,11 @@ async function newCustomerProfileFlow(browser) {
   await discoverForm.locator('[name="countryCode"]').selectOption('US');
   await discoverForm.locator('[name="state"] option[value="CA"]').waitFor({ state: 'attached' });
   await discoverForm.locator('[name="state"]').selectOption('CA');
+  await discoverForm.getByRole('button', { name: 'Search' }).click();
+  await page.waitForFunction(() => {
+    const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
+    return cards.length > 0;
+  });
   await discoverForm.locator('[name="city"] option[value="Los Angeles"]').waitFor({ state: 'attached' });
   await discoverForm.locator('[name="city"]').selectOption('Los Angeles');
   await discoverForm.locator('[name="sex"]').selectOption('Woman');

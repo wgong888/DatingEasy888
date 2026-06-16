@@ -279,13 +279,6 @@ function discoverFilterParams() {
   return params;
 }
 
-function scheduleProfileSearch() {
-  clearTimeout(state.discoveryTimer);
-  state.discoveryTimer = setTimeout(() => {
-    loadProfiles().catch((error) => showToast(error.message));
-  }, 250);
-}
-
 async function loadProfiles() {
   const requestId = ++state.discoveryRequestId;
   const params = discoverFilterParams();
@@ -913,10 +906,6 @@ $('#password-change-form').addEventListener('submit', async (event) => {
   });
 });
 
-$('#discover-filter-form').addEventListener('input', () => {
-  scheduleProfileSearch();
-});
-
 $('#discover-filter-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const button = event.submitter || $('[data-search-profiles]', event.currentTarget);
@@ -935,7 +924,6 @@ $('#discover-filter-form').addEventListener('change', (event) => {
   if (event.target.name === 'state') {
     renderDiscoverCityOptions(form.elements.countryCode.value, event.target.value, '');
   }
-  scheduleProfileSearch();
 });
 
 $('#discover-filter-form').addEventListener('reset', () => {
