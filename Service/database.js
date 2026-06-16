@@ -198,6 +198,68 @@ const profiles = [
 ];
 
 const TARGET_REAL_CUSTOMERS = 200;
+const TARGET_ROBOT_CUSTOMERS = 200;
+const GENERATED_PROFILE_SHEET = '/assets/profiles/seed-robot-contact-sheet.png';
+const GENERATED_PROFILE_SHEET_COLUMNS = 8;
+const GENERATED_PROFILE_SHEET_ROWS = 6;
+const GENERATED_PROFILE_TILE_INDEXES = Object.freeze({
+  woman: Array.from({ length: 24 }, (_, index) => index * 2),
+  man: Array.from({ length: 24 }, (_, index) => index * 2 + 1),
+  neutral: Array.from({ length: GENERATED_PROFILE_SHEET_COLUMNS * GENERATED_PROFILE_SHEET_ROWS }, (_, index) => index)
+});
+
+const PLATFORM_US_MAJOR_CITIES = [
+  ['AL', 'Birmingham'],
+  ['AK', 'Anchorage'],
+  ['AZ', 'Phoenix'],
+  ['AR', 'Little Rock'],
+  ['CA', 'Los Angeles'],
+  ['CO', 'Denver'],
+  ['CT', 'Bridgeport'],
+  ['DE', 'Wilmington'],
+  ['FL', 'Miami'],
+  ['GA', 'Atlanta'],
+  ['HI', 'Honolulu'],
+  ['ID', 'Boise'],
+  ['IL', 'Chicago'],
+  ['IN', 'Indianapolis'],
+  ['IA', 'Des Moines'],
+  ['KS', 'Wichita'],
+  ['KY', 'Louisville'],
+  ['LA', 'New Orleans'],
+  ['ME', 'Portland'],
+  ['MD', 'Baltimore'],
+  ['MA', 'Boston'],
+  ['MI', 'Detroit'],
+  ['MN', 'Minneapolis'],
+  ['MS', 'Jackson'],
+  ['MO', 'Kansas City'],
+  ['MT', 'Billings'],
+  ['NE', 'Omaha'],
+  ['NV', 'Las Vegas'],
+  ['NH', 'Manchester'],
+  ['NJ', 'Newark'],
+  ['NM', 'Albuquerque'],
+  ['NY', 'New York City'],
+  ['NC', 'Charlotte'],
+  ['ND', 'Fargo'],
+  ['OH', 'Columbus'],
+  ['OK', 'Oklahoma City'],
+  ['OR', 'Portland'],
+  ['PA', 'Philadelphia'],
+  ['RI', 'Providence'],
+  ['SC', 'Columbia'],
+  ['SD', 'Sioux Falls'],
+  ['TN', 'Nashville'],
+  ['TX', 'Houston'],
+  ['UT', 'Salt Lake City'],
+  ['VT', 'Burlington'],
+  ['VA', 'Virginia Beach'],
+  ['WA', 'Seattle'],
+  ['WV', 'Charleston'],
+  ['WI', 'Milwaukee'],
+  ['WY', 'Cheyenne']
+];
 
 const realCustomerCities = [
   ['CA', 'Los Angeles'],
@@ -218,6 +280,39 @@ const realCustomerNames = [
   'Alexis', 'Cameron', 'Devon', 'Emerson'
 ];
 
+const naturalFemaleNames = [
+  'Ava', 'Mia', 'Sofia', 'Emma', 'Grace', 'Lily', 'Nora', 'Chloe',
+  'Ella', 'Ruby', 'Zoe', 'Iris', 'Maya', 'Leah', 'Naomi', 'Hannah',
+  'Claire', 'Julia', 'Elena', 'Sabrina', 'Natalie', 'Isabel', 'Vivian', 'Audrey'
+];
+
+const naturalMaleNames = [
+  'Liam', 'Noah', 'Ethan', 'Owen', 'Miles', 'Lucas', 'Henry', 'Adrian',
+  'Daniel', 'Marcus', 'Evan', 'Caleb', 'Julian', 'Simon', 'Nathan', 'Aaron',
+  'Thomas', 'Isaac', 'Leo', 'Adam', 'Wesley', 'Victor', 'Gavin', 'Joel'
+];
+
+const naturalFemaleMiddleNames = [
+  'Rose', 'Jade', 'Marie', 'Lynn', 'Hope', 'Paige', 'Renee', 'Brooke',
+  'Elise', 'June', 'Anne', 'Skye', 'Faith', 'Noelle', 'Mae', 'Joy',
+  'Claire', 'Belle', 'Eve', 'Pearl', 'Kate', 'Wren', 'Laurel', 'Brielle',
+  'Celeste', 'Faye', 'Ivy', 'Serene', 'Avery', 'Morgan'
+];
+
+const naturalMaleMiddleNames = [
+  'Dean', 'James', 'Reid', 'Cole', 'Grant', 'Lee', 'Shane', 'Blair',
+  'Drew', 'Quinn', 'Reese', 'Sage', 'Avery', 'Morgan', 'Paul', 'Scott',
+  'Kent', 'Neil', 'Blake', 'Wayne', 'Clark', 'Evan', 'Ray', 'Jude',
+  'Troy', 'Lane', 'Wade', 'Pierce', 'Bennett', 'Graham'
+];
+
+const naturalSurnames = [
+  'Carter', 'Brooks', 'Reed', 'Hayes', 'Parker', 'Bailey', 'Morgan', 'Kim',
+  'Rivera', 'Stone', 'Foster', 'Bell', 'Gray', 'Cole', 'Wong', 'Diaz',
+  'Chen', 'Patel', 'Nguyen', 'Bennett', 'Sullivan', 'Price', 'Hale', 'Morris',
+  'Lawson', 'Fisher', 'Ellis', 'Porter', 'Wells', 'Griffin'
+];
+
 function now() {
   return new Date().toISOString();
 }
@@ -230,8 +325,11 @@ function openDatabase(databasePath = DEFAULT_DB_PATH) {
   migrateEmployeeProfile(db);
   migrateChargeRecord(db);
   seedDatabase(db);
+  ensureTestEmployeeAccounts(db);
+  ensurePlatformInitialData(db);
   ensureRobotPrototypeData(db);
   ensureRealCustomerVolume(db);
+  ensureUniqueVirtualCustomerNames(db);
   return db;
 }
 
@@ -334,6 +432,72 @@ function defaultProfilePhoto(sex) {
   return '/assets/profiles/default-neutral.svg';
 }
 
+function profilePhotoIndex(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.abs(value);
+  const text = String(value ?? '0');
+  if (/^-?\d+$/u.test(text)) return Math.abs(Number(text));
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash * 31) + text.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function generatedProfilePhoto(sex, index = 0) {
+  const normalized = String(sex || '').toLowerCase();
+  const candidates = GENERATED_PROFILE_TILE_INDEXES[normalized] || GENERATED_PROFILE_TILE_INDEXES.neutral;
+  const tile = candidates[profilePhotoIndex(index) % candidates.length];
+  const column = tile % GENERATED_PROFILE_SHEET_COLUMNS;
+  const row = Math.floor(tile / GENERATED_PROFILE_SHEET_COLUMNS);
+  const x = `${(column * 100) / (GENERATED_PROFILE_SHEET_COLUMNS - 1)}%`;
+  const y = `${(row * 100) / (GENERATED_PROFILE_SHEET_ROWS - 1)}%`;
+  const size = `${GENERATED_PROFILE_SHEET_COLUMNS * 100}% ${GENERATED_PROFILE_SHEET_ROWS * 100}%`;
+  return `${GENERATED_PROFILE_SHEET}#${x} ${y}|${size}`;
+}
+
+function naturalDisplayName(sex, index) {
+  const firstNames = sex === 'Man' ? naturalMaleNames : naturalFemaleNames;
+  const middleNames = sex === 'Man' ? naturalMaleMiddleNames : naturalFemaleMiddleNames;
+  const first = firstNames[index % firstNames.length];
+  const middle = middleNames[Math.floor(index / firstNames.length) % middleNames.length];
+  const last = naturalSurnames[
+    Math.floor(index / (firstNames.length * middleNames.length)) % naturalSurnames.length
+  ];
+  return `${first} ${middle} ${last}`;
+}
+
+function alphaSerial(index) {
+  let value = Math.max(0, Number(index) || 0);
+  let serial = '';
+  do {
+    serial = String.fromCharCode(65 + (value % 26)) + serial;
+    value = Math.floor(value / 26) - 1;
+  } while (value >= 0);
+  return serial;
+}
+
+function uniqueFirstName(sex, index) {
+  const firstNames = sex === 'Man' ? naturalMaleNames : naturalFemaleNames;
+  const base = firstNames[index % firstNames.length];
+  const cycle = Math.floor(index / firstNames.length);
+  return cycle === 0 ? base : `${base}${alphaSerial(cycle - 1)}`;
+}
+
+function uniqueVirtualDisplayName(sex, index) {
+  const middleNames = sex === 'Man' ? naturalMaleMiddleNames : naturalFemaleMiddleNames;
+  const firstNames = sex === 'Man' ? naturalMaleNames : naturalFemaleNames;
+  const first = uniqueFirstName(sex, index);
+  const middle = middleNames[Math.floor(index / firstNames.length) % middleNames.length];
+  const last = naturalSurnames[
+    Math.floor(index / (firstNames.length * middleNames.length)) % naturalSurnames.length
+  ];
+  return `${first} ${middle} ${last}`;
+}
+
+function displayFirstName(displayName) {
+  return String(displayName || '').trim().split(/\s+/u)[0] || '';
+}
+
 function migrateChargeRecord(db) {
   const existing = new Set(
     db.prepare('PRAGMA table_info(ChargeRecord)').all().map((column) => column.name)
@@ -431,7 +595,7 @@ function seedDatabase(db) {
       profile.state,
       profile.city,
       profile.bio,
-      `/assets/profiles/contact-sheet.png#${profile.photoPosition}`,
+      generatedProfilePhoto(profile.sex, seedIds.length),
       'Single',
       'Creative services',
       'Advanced',
@@ -445,7 +609,7 @@ function seedDatabase(db) {
       60,
       'Friendly and curious',
       profile.bio,
-      JSON.stringify([`/assets/profiles/contact-sheet.png#${profile.photoPosition}`]),
+      JSON.stringify([generatedProfilePhoto(profile.sex, seedIds.length)]),
       created,
       created,
       profile.seedType,
@@ -728,7 +892,7 @@ function ensureRobotPrototypeData(db) {
       SELECT CustomerId FROM CustomerProfile WHERE EmailNormalized = ?
     `).get(email);
     if (!existing) {
-      const photo = `/assets/profiles/contact-sheet.png#${profile.photoPosition}`;
+      const photo = generatedProfilePhoto(profile.sex, profiles.indexOf(profile));
       const customerId = randomUUID();
       insertRobot.run(
         customerId,
@@ -794,6 +958,8 @@ function ensureRobotPrototypeData(db) {
     }
   }
 
+  ensureRobotCustomerVolume(db, timestamp);
+
   const insertPolicy = db.prepare(`
     INSERT OR IGNORE INTO PolicyDefinitions (
       PolicyId, PolicyKey, Title, Description, PolicyValue,
@@ -822,6 +988,494 @@ function ensureRobotPrototypeData(db) {
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, timestamp, timestamp);
   });
+}
+
+function generatedTestEmployee(index) {
+  const padded = String(index).padStart(3, '0');
+  return {
+    email: `test-employee-${padded}@datingeasy.test`,
+    displayName: `Test Employee ${padded}`,
+    sex: index % 2 === 0 ? 'Woman' : 'Man',
+    birthDate: `199${index % 10}-01-${String((index % 27) + 1).padStart(2, '0')}`,
+    phone: `+1-213-555-1${padded}`,
+    address: `${100 + index} Test Employee Lane, Los Angeles, CA`,
+    education: 'Prototype chat-employee test account',
+    role: 'ChatEmployee',
+    startDate: '2026-01-01',
+    remark: 'Additional prototype employee account for testing'
+  };
+}
+
+function ensureTestEmployeeAccounts(db) {
+  const timestamp = now();
+  const insertEmployee = db.prepare(`
+    INSERT INTO Employees (
+      EmployeeId, Email, PasswordHash, DisplayName, Sex, BirthDate, Phone,
+      Address, Education, EmployeeType, Role, Active, StartDate, Remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Human', ?, 1, ?, ?)
+  `);
+  const updateEmployee = db.prepare(`
+    UPDATE Employees
+    SET PasswordHash = ?, DisplayName = ?, Sex = ?, BirthDate = ?, Phone = ?,
+        Address = ?, Education = ?, EmployeeType = 'Human', Role = ?,
+        Active = 1, StartDate = ?, Remark = ?
+    WHERE Email = ?
+  `);
+  const passwordHash = hashPassword('Demo123!');
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (let index = 1; index <= 10; index += 1) {
+      const employee = generatedTestEmployee(index);
+      const existing = db.prepare('SELECT EmployeeId FROM Employees WHERE Email = ?')
+        .get(employee.email);
+      if (existing) {
+        updateEmployee.run(
+          passwordHash,
+          employee.displayName,
+          employee.sex,
+          employee.birthDate,
+          employee.phone,
+          employee.address,
+          employee.education,
+          employee.role,
+          employee.startDate,
+          employee.remark,
+          employee.email
+        );
+      } else {
+        insertEmployee.run(
+          randomUUID(),
+          employee.email,
+          passwordHash,
+          employee.displayName,
+          employee.sex,
+          employee.birthDate,
+          employee.phone,
+          employee.address,
+          employee.education,
+          employee.role,
+          employee.startDate,
+          `${employee.remark}; created ${timestamp}`
+        );
+      }
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function platformProfile({ state, city, sex, index, kind, nameSerial }) {
+  const female = sex === 'Woman';
+  const serial = nameSerial ?? index + 1;
+  const stateIndex = PLATFORM_US_MAJOR_CITIES.findIndex(([code]) => code === state);
+  const profileIndex = Math.max(0, stateIndex) * 28 + serial - 1;
+  const cityText = city === 'New York City' ? 'New York' : city;
+  const birthYear = 1986 + ((serial + state.charCodeAt(0)) % 21);
+  const birthMonth = '01';
+  const birthDay = '15';
+  return {
+    displayName: naturalDisplayName(sex, profileIndex),
+    birthDate: `${birthYear}-${birthMonth}-${birthDay}`,
+    sex,
+    lookingFor: female ? 'Men' : 'Women',
+    bio: `I live near ${cityText} and enjoy warm conversation, local food, music, and easy weekend plans.`,
+    story: `Around ${cityText}, I like simple places with good energy and people who can be thoughtful, kind, and clear.`,
+    profilePhoto: generatedProfilePhoto(sex, `${kind}:${state}:${city}:${sex}:${serial}:${profileIndex}`)
+  };
+}
+
+function ensurePlatformInitialData(db) {
+  const timestamp = now();
+  const passwordHash = hashPassword('Demo123!');
+  const platformCustomerPasswordHash = hashPassword(randomUUID());
+  const insertCustomer = db.prepare(`
+    INSERT INTO CustomerProfile (
+      CustomerId, Email, EmailNormalized, Phone, PasswordHash, DisplayName, BirthDate,
+      Sex, GenderLookingFor, CountryCode, StateId, CityName, Bio, ProfilePhoto,
+      MaritalStatus, WorkField, EnglishLevel, LanguagesJson, TraitsJson,
+      InterestsJson, MoviePreferencesJson, MusicPreferencesJson, GoalsJson,
+      PreferredAgeMin, PreferredAgeMax, PersonalityType, Story,
+      PublicPhotosJson, PrivatePhotosJson, ProfileCompleted, ProfileCompleteness,
+      CreateTime, UpdateTime, Active, Seed, CreditsRemain, TotalCharged, Remark
+    ) VALUES (
+      ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'US', ?, ?, ?, ?,
+      'Single', 'Creative services', 'Advanced', '["English"]',
+      '["Warm","Thoughtful","Kind"]', '["Traveling","Cooking","Music"]',
+      '["Comedy","Adventure"]', '["Jazz","Pop"]',
+      '["Chatting","Finding a friend"]', 30, 60, 'Friendly and curious',
+      ?, ?, '[]', 1, 100, ?, ?, 1, ?, 0, 0, ?
+    )
+  `);
+  const updateCustomer = db.prepare(`
+    UPDATE CustomerProfile
+    SET DisplayName = ?, BirthDate = ?, Sex = ?, GenderLookingFor = ?,
+      CountryCode = 'US', StateId = ?, CityName = ?, Bio = ?, ProfilePhoto = ?,
+      Story = ?, PublicPhotosJson = ?, Active = 1, Seed = ?, UpdateTime = ?,
+      Remark = ?
+    WHERE EmailNormalized = ?
+  `);
+  const insertProvenance = db.prepare(`
+    INSERT OR IGNORE INTO SeedProfileProvenance (
+      SeedProfileProvenanceId, CustomerId, CreationSource,
+      AutoFilledFieldsJson, GenerationBatchId, AssetSourceType, CharacterSpecVersion,
+      TextModelVersion, ImageModelVersion, PromptPolicyVersion,
+      OriginalityCheckStatus, AdultAppearanceCheckStatus,
+      HumanReviewStatus, ProfilePresentationVersion, GeneratedTime, Remark
+    ) VALUES (
+      ?, ?, 'SystemAutomatic', '[]', ?, 'SystemGenerated', 'platform-profile-v1',
+      'PlatformInitialData', 'PlatformProfileAssets', 'platform-initial-data-v1',
+      'Passed', 'Passed', 'Approved', 'platform-v1', ?, ?
+    )
+  `);
+  const insertEmployee = db.prepare(`
+    INSERT INTO Employees (
+      EmployeeId, Email, PasswordHash, DisplayName, Sex, BirthDate, Phone,
+      Address, Education, EmployeeType, Role, Active, StartDate, Remark
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Human', 'ChatEmployee', 1, '2026-01-01', ?)
+  `);
+  const updateEmployee = db.prepare(`
+    UPDATE Employees
+    SET PasswordHash = ?, DisplayName = ?, Sex = ?, BirthDate = ?, Phone = ?,
+      Address = ?, Education = ?, EmployeeType = 'Human', Role = 'ChatEmployee',
+      Active = 1, StartDate = '2026-01-01', Remark = ?
+    WHERE Email = ?
+  `);
+  const insertAssignment = db.prepare(`
+    INSERT OR IGNORE INTO EmployeeSeed (EmployeeId, CustomerId, Active, Country, State, City)
+    VALUES (?, ?, 1, 'US', ?, ?)
+  `);
+  const updateAssignment = db.prepare(`
+    UPDATE EmployeeSeed SET Active = 1, Country = 'US', State = ?, City = ?
+    WHERE EmployeeId = ? AND CustomerId = ?
+  `);
+  const insertCoverage = db.prepare(`
+    INSERT OR IGNORE INTO RobotCityCoverage (
+      RobotCityCoverageId, CountryCode, StateId, CityName, TimeZoneId,
+      MinimumManProfiles, MinimumWomanProfiles, RequiredOnlineMan,
+      RequiredOnlineWoman, CoverageStatus, Active, CreateTime, UpdateTime
+    ) VALUES (?, 'US', ?, ?, 'America/New_York', 3, 6, 1, 1, 'CoverageReady', 1, ?, ?)
+  `);
+  const updateCoverage = db.prepare(`
+    UPDATE RobotCityCoverage
+    SET MinimumManProfiles = 3, MinimumWomanProfiles = 6,
+      RequiredOnlineMan = 1, RequiredOnlineWoman = 1,
+      CoverageStatus = CASE WHEN CoverageStatus = 'Paused' THEN CoverageStatus ELSE 'CoverageReady' END,
+      Active = 1, UpdateTime = ?
+    WHERE CountryCode = 'US' AND StateId = ? AND CityName = ?
+  `);
+
+  const ensureCustomer = ({ email, state, city, seed, profile, remark }) => {
+    const existing = db.prepare('SELECT CustomerId FROM CustomerProfile WHERE EmailNormalized = ?')
+      .get(email);
+    if (existing) {
+      updateCustomer.run(
+        profile.displayName,
+        profile.birthDate,
+        profile.sex,
+        profile.lookingFor,
+        state,
+        city,
+        profile.bio,
+        profile.profilePhoto,
+        profile.story,
+        JSON.stringify([profile.profilePhoto]),
+        seed,
+        timestamp,
+        remark,
+        email
+      );
+      return existing.CustomerId;
+    }
+    const customerId = randomUUID();
+    insertCustomer.run(
+      customerId,
+      email,
+      email,
+      platformCustomerPasswordHash,
+      profile.displayName,
+      profile.birthDate,
+      profile.sex,
+      profile.lookingFor,
+      state,
+      city,
+      profile.bio,
+      profile.profilePhoto,
+      profile.story,
+      JSON.stringify([profile.profilePhoto]),
+      timestamp,
+      timestamp,
+      seed,
+      remark
+    );
+    return customerId;
+  };
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const [state, city] of PLATFORM_US_MAJOR_CITIES) {
+      insertCoverage.run(randomUUID(), state, city, timestamp, timestamp);
+      updateCoverage.run(timestamp, state, city);
+
+      const operatorEmail = `platform-seed-operator-${state.toLowerCase()}@datingeasy.test`;
+      let operator = db.prepare('SELECT EmployeeId FROM Employees WHERE Email = ?').get(operatorEmail);
+      const operatorProfile = {
+        displayName: `${city} Seed Operator`,
+        sex: 'NotSpecified',
+        birthDate: '1990-01-01',
+        phone: `+1-555-30${String(PLATFORM_US_MAJOR_CITIES.findIndex((item) => item[0] === state) + 1).padStart(2, '0')}`,
+        address: `${city} seed operations desk, ${state}`,
+        education: 'Platform seed operations training',
+        remark: 'Platform baseline seed-profile operator'
+      };
+      if (operator) {
+        updateEmployee.run(
+          passwordHash,
+          operatorProfile.displayName,
+          operatorProfile.sex,
+          operatorProfile.birthDate,
+          operatorProfile.phone,
+          operatorProfile.address,
+          operatorProfile.education,
+          operatorProfile.remark,
+          operatorEmail
+        );
+      } else {
+        insertEmployee.run(
+          randomUUID(),
+          operatorEmail,
+          passwordHash,
+          operatorProfile.displayName,
+          operatorProfile.sex,
+          operatorProfile.birthDate,
+          operatorProfile.phone,
+          operatorProfile.address,
+          operatorProfile.education,
+          operatorProfile.remark
+        );
+      }
+      operator = db.prepare('SELECT EmployeeId FROM Employees WHERE Email = ?').get(operatorEmail);
+
+      for (let index = 0; index < 6; index += 1) {
+        const profile = platformProfile({
+          state,
+          city,
+          sex: 'Woman',
+          index,
+          kind: 'robot',
+          nameSerial: index + 1
+        });
+        const email = `platform-robot-${state.toLowerCase()}-f-${String(index + 1).padStart(2, '0')}@virtual.datingeasy.test`;
+        const customerId = ensureCustomer({
+          email,
+          state,
+          city,
+          seed: 2,
+          profile,
+          remark: 'Permanent platform female robot customer baseline'
+        });
+        insertProvenance.run(randomUUID(), customerId, randomUUID(), timestamp, 'Permanent platform female robot profile.');
+      }
+      for (let index = 0; index < 2; index += 1) {
+        const profile = platformProfile({
+          state,
+          city,
+          sex: 'Man',
+          index,
+          kind: 'robot',
+          nameSerial: index + 7
+        });
+        const email = `platform-robot-${state.toLowerCase()}-m-${String(index + 1).padStart(2, '0')}@virtual.datingeasy.test`;
+        const customerId = ensureCustomer({
+          email,
+          state,
+          city,
+          seed: 2,
+          profile,
+          remark: 'Permanent platform male robot customer baseline'
+        });
+        insertProvenance.run(randomUUID(), customerId, randomUUID(), timestamp, 'Permanent platform male robot profile.');
+      }
+      for (let index = 0; index < 15; index += 1) {
+        const profile = platformProfile({
+          state,
+          city,
+          sex: 'Woman',
+          index,
+          kind: 'seed',
+          nameSerial: index + 9
+        });
+        const email = `platform-seed-${state.toLowerCase()}-f-${String(index + 1).padStart(2, '0')}@seed.datingeasy.test`;
+        const customerId = ensureCustomer({
+          email,
+          state,
+          city,
+          seed: 1,
+          profile,
+          remark: 'Permanent platform female employee-operated seed customer baseline'
+        });
+        insertProvenance.run(randomUUID(), customerId, randomUUID(), timestamp, 'Permanent platform female seed profile.');
+        insertAssignment.run(operator.EmployeeId, customerId, state, city);
+        updateAssignment.run(state, city, operator.EmployeeId, customerId);
+      }
+      for (let index = 0; index < 5; index += 1) {
+        const profile = platformProfile({
+          state,
+          city,
+          sex: 'Man',
+          index,
+          kind: 'seed',
+          nameSerial: index + 24
+        });
+        const email = `platform-seed-${state.toLowerCase()}-m-${String(index + 1).padStart(2, '0')}@seed.datingeasy.test`;
+        const customerId = ensureCustomer({
+          email,
+          state,
+          city,
+          seed: 1,
+          profile,
+          remark: 'Permanent platform male employee-operated seed customer baseline'
+        });
+        insertProvenance.run(randomUUID(), customerId, randomUUID(), timestamp, 'Permanent platform male seed profile.');
+        insertAssignment.run(operator.EmployeeId, customerId, state, city);
+        updateAssignment.run(state, city, operator.EmployeeId, customerId);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function generatedRobotCustomer(index) {
+  const sex = index % 2 === 0 ? 'Woman' : 'Man';
+  const name = naturalDisplayName(sex, 2_000 + index);
+  const birthYear = 1972 + (index % 24);
+  const birthMonth = String((index % 12) + 1).padStart(2, '0');
+  const birthDay = String((index % 27) + 1).padStart(2, '0');
+  return {
+    email: `robot-customer-${String(index).padStart(3, '0')}@virtual.datingeasy.test`,
+    displayName: name,
+    birthDate: `${birthYear}-${birthMonth}-${birthDay}`,
+    sex,
+    lookingFor: sex === 'Man' ? 'Women' : 'Men',
+    bio: 'I enjoy music, simple food, local walks, and respectful conversation around Los Angeles.',
+    story: `Around Los Angeles, I like relaxed plans, steady humor, and conversations that help two people understand each other a little better.`,
+    profilePhoto: generatedProfilePhoto(sex, `${name}:${sex}:${index}`)
+  };
+}
+
+function ensureRobotCustomerVolume(db, timestamp = now()) {
+  refreshGeneratedRobotCustomerProfiles(db, timestamp);
+  let count = db.prepare(`
+    SELECT COUNT(*) AS value FROM CustomerProfile WHERE Seed = 2
+  `).get().value;
+  if (count >= TARGET_ROBOT_CUSTOMERS) return;
+
+  const insertRobot = db.prepare(`
+    INSERT INTO CustomerProfile (
+      CustomerId, Email, EmailNormalized, Phone, PasswordHash, DisplayName, BirthDate,
+      Sex, GenderLookingFor, CountryCode, StateId, CityName, Bio, ProfilePhoto,
+      MaritalStatus, WorkField, EnglishLevel, LanguagesJson, TraitsJson,
+      InterestsJson, MoviePreferencesJson, MusicPreferencesJson, GoalsJson,
+      PreferredAgeMin, PreferredAgeMax, PersonalityType, Story,
+      PublicPhotosJson, PrivatePhotosJson, ProfileCompleted, ProfileCompleteness,
+      CreateTime, UpdateTime, Active, Seed, CreditsRemain, TotalCharged, Remark
+    ) VALUES (
+      ?, ?, ?, NULL, ?, ?, ?, ?, ?, 'US', 'CA', 'Los Angeles', ?, ?,
+      'Single', 'Creative services', 'Advanced', '["English"]',
+      '["Warm","Thoughtful","Humorous"]', '["Traveling","Cooking","Music"]',
+      '["Comedy","Adventure"]', '["Jazz","Pop"]',
+      '["Chatting","Finding a friend"]', 30, 60, 'Friendly and curious',
+      ?, ?, '[]', 1, 100, ?, ?, 1, 2, 0, 0,
+      'Generated prototype robot customer operating autonomously'
+    )
+  `);
+  const insertProvenance = db.prepare(`
+    INSERT OR IGNORE INTO SeedProfileProvenance (
+      SeedProfileProvenanceId, CustomerId, CreationSource,
+      AutoFilledFieldsJson, GenerationBatchId, AssetSourceType, CharacterSpecVersion,
+      TextModelVersion, ImageModelVersion, PromptPolicyVersion,
+      OriginalityCheckStatus, AdultAppearanceCheckStatus,
+      HumanReviewStatus, ProfilePresentationVersion, GeneratedTime, Remark
+    ) VALUES (
+      ?, ?, 'SystemAutomatic', '[]', ?, 'SystemGenerated', 'robot-profile-v1',
+      'PrototypeSeedData', 'PrototypeProfileAssets', 'robot-profile-policy-v1',
+      'Passed', 'Passed', 'Approved', 'prototype-v1', ?, ?
+    )
+  `);
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (let index = 1; count < TARGET_ROBOT_CUSTOMERS; index += 1) {
+      const profile = generatedRobotCustomer(index);
+      if (db.prepare('SELECT 1 FROM CustomerProfile WHERE EmailNormalized = ?').get(profile.email)) {
+        continue;
+      }
+      const customerId = randomUUID();
+      insertRobot.run(
+        customerId,
+        profile.email,
+        profile.email,
+        hashPassword(randomUUID()),
+        profile.displayName,
+        profile.birthDate,
+        profile.sex,
+        profile.lookingFor,
+        profile.bio,
+        profile.profilePhoto,
+        profile.story,
+        JSON.stringify([profile.profilePhoto]),
+        timestamp,
+        timestamp
+      );
+      insertProvenance.run(
+        randomUUID(),
+        customerId,
+        randomUUID(),
+        timestamp,
+        'Approved prototype robot profile generated for volume testing.'
+      );
+      count += 1;
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function refreshGeneratedRobotCustomerProfiles(db, timestamp = now()) {
+  const generated = db.prepare(`
+    SELECT CustomerId, EmailNormalized FROM CustomerProfile
+    WHERE Seed = 2
+      AND EmailNormalized LIKE 'robot-customer-%@virtual.datingeasy.test'
+  `).all();
+  if (!generated.length) return;
+
+  const updateProfile = db.prepare(`
+    UPDATE CustomerProfile
+    SET DisplayName = ?, Bio = ?, Story = ?, ProfilePhoto = ?,
+      PublicPhotosJson = ?, UpdateTime = ?
+    WHERE CustomerId = ?
+  `);
+  for (const row of generated) {
+    const match = row.EmailNormalized.match(/^robot-customer-(\d+)@virtual\.datingeasy\.test$/);
+    if (!match) continue;
+    const profile = generatedRobotCustomer(Number(match[1]));
+    updateProfile.run(
+      profile.displayName,
+      profile.bio,
+      profile.story,
+      profile.profilePhoto,
+      JSON.stringify([profile.profilePhoto]),
+      timestamp,
+      row.CustomerId
+    );
+  }
 }
 
 function generatedRealCustomer(index) {
@@ -854,7 +1508,7 @@ function generatedRealCustomer(index) {
     preferredAgeMax: 62,
     personalityType: ['Easygoing', 'Family focused', 'Creative spirit', 'Quiet thinker'][index % 4],
     story: `I am here to meet adults who enjoy clear, respectful conversation. Around ${city}, I like simple weekends, local food, and learning what makes another person's life interesting.`,
-    profilePhoto: defaultProfilePhoto(sex)
+    profilePhoto: generatedProfilePhoto(sex, `${name}:${sex}:${state}:${city}:${index}`)
   };
 }
 
@@ -940,6 +1594,38 @@ function ensureRealCustomerVolume(db) {
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
+  }
+}
+
+function ensureUniqueVirtualCustomerNames(db) {
+  const rows = db.prepare(`
+    SELECT CustomerId, DisplayName, Sex, EmailNormalized
+    FROM CustomerProfile
+    WHERE Seed IN (1, 2)
+    ORDER BY DisplayName, CreateTime, EmailNormalized
+  `).all();
+  const usedNames = new Set();
+  const updateName = db.prepare(`
+    UPDATE CustomerProfile
+    SET DisplayName = ?, UpdateTime = ?
+    WHERE CustomerId = ?
+  `);
+  const timestamp = now();
+  const usedFirstNames = new Set();
+  for (const row of rows) {
+    let candidate = row.DisplayName;
+    let candidateFirst = displayFirstName(candidate).toLowerCase();
+    if (usedNames.has(candidate) || usedFirstNames.has(candidateFirst)) {
+      let suffix = 3_000 + usedNames.size;
+      do {
+        candidate = uniqueVirtualDisplayName(row.Sex, suffix);
+        candidateFirst = displayFirstName(candidate).toLowerCase();
+        suffix += 1;
+      } while (usedNames.has(candidate) || usedFirstNames.has(candidateFirst));
+      updateName.run(candidate, timestamp, row.CustomerId);
+    }
+    usedNames.add(candidate);
+    usedFirstNames.add(candidateFirst);
   }
 }
 

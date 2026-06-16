@@ -11,17 +11,35 @@ const state = {
   selectedCreditPackageId: 2,
   currentView: 'messages',
   previousListView: 'discover',
-  discoveryTimer: null
+  discoveryTimer: null,
+  discoverLocations: null,
+  discoveryRequestId: 0
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
+const CONFIGURED_SERVICE_ORIGIN = localStorage.getItem('datingeasyServiceOrigin');
+const DEFAULT_LOCAL_SERVICE_ORIGIN = 'http://127.0.0.1:4173';
+
+function apiEndpoint(path) {
+  if (/^https?:\/\//u.test(path)) return path;
+  if (CONFIGURED_SERVICE_ORIGIN) {
+    return `${CONFIGURED_SERVICE_ORIGIN}${path}`;
+  }
+  if (window.location.protocol === 'file:') {
+    return `${DEFAULT_LOCAL_SERVICE_ORIGIN}${path}`;
+  }
+  return path;
+}
+
 async function api(path, options = {}) {
   let response;
+  const endpoint = apiEndpoint(path);
+  const crossOrigin = /^https?:\/\//u.test(endpoint) && new URL(endpoint).origin !== window.location.origin;
   try {
-    response = await fetch(path, {
-      credentials: 'same-origin',
+    response = await fetch(endpoint, {
+      credentials: crossOrigin ? 'include' : 'same-origin',
       headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {})
@@ -43,7 +61,25 @@ async function api(path, options = {}) {
 }
 
 function idempotencyKey() {
-  return crypto.randomUUID();
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0'));
+  return [
+    hex.slice(0, 4).join(''),
+    hex.slice(4, 6).join(''),
+    hex.slice(6, 8).join(''),
+    hex.slice(8, 10).join(''),
+    hex.slice(10, 16).join('')
+  ].join('-');
 }
 
 function showToast(message) {
@@ -89,6 +125,59 @@ function escapeHtml(value) {
   const div = document.createElement('div');
   div.textContent = String(value ?? '');
   return div.innerHTML;
+}
+
+function optionHtml(value, label, selectedValue = '') {
+  return `<option value="${escapeHtml(value)}" ${value === selectedValue ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+}
+
+async function loadDiscoverLocations() {
+  if (state.discoverLocations) return state.discoverLocations;
+  state.discoverLocations = await api('/api/v1/customer/discovery/locations');
+  return state.discoverLocations;
+}
+
+function selectedDiscoverCountry(countryCode = '') {
+  const countries = state.discoverLocations?.countries || [];
+  return countries.find((country) => country.code === countryCode) || null;
+}
+
+function selectedDiscoverState(country, submittedState = '') {
+  return country?.states.find((item) => item.code === submittedState) || null;
+}
+
+function renderDiscoverCountryOptions(selectedValue = '') {
+  const form = $('#discover-filter-form');
+  const countries = state.discoverLocations?.countries || [];
+  form.elements.countryCode.innerHTML = [
+    optionHtml('', 'Any country', selectedValue),
+    ...countries.map((country) => optionHtml(country.code, country.name, selectedValue))
+  ].join('');
+  renderDiscoverStateOptions(selectedValue, '');
+}
+
+function renderDiscoverStateOptions(countryCode = '', selectedValue = '') {
+  const form = $('#discover-filter-form');
+  const country = selectedDiscoverCountry(countryCode);
+  const states = country?.states || [];
+  form.elements.state.disabled = !country;
+  form.elements.state.innerHTML = [
+    optionHtml('', 'Any state', selectedValue),
+    ...states.map((item) => optionHtml(item.code, item.name, selectedValue))
+  ].join('');
+  renderDiscoverCityOptions(countryCode, selectedValue, '');
+}
+
+function renderDiscoverCityOptions(countryCode = '', stateCode = '', selectedValue = '') {
+  const form = $('#discover-filter-form');
+  const country = selectedDiscoverCountry(countryCode);
+  const locationState = selectedDiscoverState(country, stateCode);
+  const cities = locationState?.cities || [];
+  form.elements.city.disabled = !locationState;
+  form.elements.city.innerHTML = [
+    optionHtml('', 'Any city', selectedValue),
+    ...cities.map((city) => optionHtml(city, city, selectedValue))
+  ].join('');
 }
 
 function renderTags(items) {
@@ -174,13 +263,16 @@ function showApplication() {
     ? 'Save profile'
     : 'Complete profile';
   $('#app-view').classList.toggle('profile-incomplete', !state.me.profileCompleted);
+  loadDiscoverLocations()
+    .then(() => renderDiscoverCountryOptions($('#discover-filter-form').elements.countryCode.value))
+    .catch((error) => showToast(error.message));
 }
 
 function discoverFilterParams() {
   const form = $('#discover-filter-form');
   const params = new URLSearchParams();
   if (!form) return params;
-  ['query', 'city', 'minAge', 'maxAge', 'sex'].forEach((name) => {
+  ['query', 'countryCode', 'state', 'city', 'minAge', 'maxAge', 'sex'].forEach((name) => {
     const value = String(form.elements[name]?.value || '').trim();
     if (value) params.set(name, value);
   });
@@ -195,9 +287,11 @@ function scheduleProfileSearch() {
 }
 
 async function loadProfiles() {
+  const requestId = ++state.discoveryRequestId;
   const params = discoverFilterParams();
   const suffix = params.toString() ? `?${params}` : '';
   const data = await api(`/api/v1/customer/discovery/profiles${suffix}`);
+  if (requestId !== state.discoveryRequestId) return;
   state.profiles = data.items;
   renderProfileGrid($('#profile-grid'), state.profiles, 'No profiles match this search.');
 }
@@ -816,12 +910,28 @@ $('#discover-filter-form').addEventListener('input', () => {
   scheduleProfileSearch();
 });
 
-$('#discover-filter-form').addEventListener('change', () => {
+$('#discover-filter-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  clearTimeout(state.discoveryTimer);
+  loadProfiles().catch((error) => showToast(error.message));
+});
+
+$('#discover-filter-form').addEventListener('change', (event) => {
+  const form = event.currentTarget;
+  if (event.target.name === 'countryCode') {
+    renderDiscoverStateOptions(event.target.value, '');
+  }
+  if (event.target.name === 'state') {
+    renderDiscoverCityOptions(form.elements.countryCode.value, event.target.value, '');
+  }
   scheduleProfileSearch();
 });
 
 $('#discover-filter-form').addEventListener('reset', () => {
-  setTimeout(() => loadProfiles().catch((error) => showToast(error.message)));
+  setTimeout(() => {
+    renderDiscoverCountryOptions('');
+    loadProfiles().catch((error) => showToast(error.message));
+  });
 });
 
 document.addEventListener('submit', (event) => {

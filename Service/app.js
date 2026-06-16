@@ -22,10 +22,19 @@ const SESSION_LIFETIME_MS = 12 * 60 * 60 * 1000;
 const MESSAGE_COST = 5;
 const MAX_MESSAGE_WORDS = 60;
 const MAX_BODY_BYTES = 1_000_000;
+const ROBOT_WORKER_INTERVAL_MS = 60_000;
 const CUSTOMER_TYPE = Object.freeze({
   REAL: 0,
   SEED: 1,
   ROBOT: 2
+});
+const GENERATED_PROFILE_SHEET = '/assets/profiles/seed-robot-contact-sheet.png';
+const GENERATED_PROFILE_SHEET_COLUMNS = 8;
+const GENERATED_PROFILE_SHEET_ROWS = 6;
+const GENERATED_PROFILE_TILE_INDEXES = Object.freeze({
+  woman: Array.from({ length: 24 }, (_, index) => index * 2),
+  man: Array.from({ length: 24 }, (_, index) => index * 2 + 1),
+  neutral: Array.from({ length: GENERATED_PROFILE_SHEET_COLUMNS * GENERATED_PROFILE_SHEET_ROWS }, (_, index) => index)
 });
 const CREDIT_PACKAGES = [
   { packageId: 1, amount: 10, credits: 100 },
@@ -46,6 +55,66 @@ const GIFTS = [
   platformCredits: gift.senderCost - Math.floor(gift.senderCost * 0.8),
   refundable: false
 }));
+const COUNTRY_NAMES = Object.freeze({
+  US: 'United States',
+  CA: 'Canada',
+  GB: 'United Kingdom',
+  AU: 'Australia',
+  NZ: 'New Zealand',
+  CN: 'China'
+});
+const US_STATE_NAMES = Object.freeze({
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming'
+});
 const PREPARED_REPLIES = [
   {
     preparedReplyId: 'acknowledge-detail',
@@ -77,6 +146,13 @@ const SESSION_COOKIE_BY_ROLE = Object.freeze({
 const ALL_SESSION_COOKIES = Object.freeze([
   ...Object.values(SESSION_COOKIE_BY_ROLE),
   'de_session'
+]);
+const ALLOWED_LOCAL_ORIGINS = new Set([
+  'null',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500'
 ]);
 
 class ApiError extends Error {
@@ -167,6 +243,27 @@ function errorEnvelope(error, requestId) {
       ...(error.fields ? { fields: error.fields } : {})
     }
   };
+}
+
+function localOriginAllowed(origin) {
+  if (!origin) return false;
+  if (ALLOWED_LOCAL_ORIGINS.has(origin)) return true;
+  try {
+    const url = new URL(origin);
+    return ['localhost', '127.0.0.1'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  if (!localOriginAllowed(origin)) return;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key');
+  res.setHeader('Vary', 'Origin');
 }
 
 function json(res, status, body) {
@@ -314,6 +411,29 @@ function defaultProfilePhoto(sex) {
   return '/assets/profiles/default-neutral.svg';
 }
 
+function profilePhotoIndex(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.abs(value);
+  const text = String(value ?? '0');
+  if (/^-?\d+$/u.test(text)) return Math.abs(Number(text));
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash * 31) + text.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function generatedProfilePhoto(sex, index = 0) {
+  const normalized = String(sex || '').toLowerCase();
+  const candidates = GENERATED_PROFILE_TILE_INDEXES[normalized] || GENERATED_PROFILE_TILE_INDEXES.neutral;
+  const tile = candidates[profilePhotoIndex(index) % candidates.length];
+  const column = tile % GENERATED_PROFILE_SHEET_COLUMNS;
+  const row = Math.floor(tile / GENERATED_PROFILE_SHEET_COLUMNS);
+  const x = `${(column * 100) / (GENERATED_PROFILE_SHEET_COLUMNS - 1)}%`;
+  const y = `${(row * 100) / (GENERATED_PROFILE_SHEET_ROWS - 1)}%`;
+  const size = `${GENERATED_PROFILE_SHEET_COLUMNS * 100}% ${GENERATED_PROFILE_SHEET_ROWS * 100}%`;
+  return `${GENERATED_PROFILE_SHEET}#${x} ${y}|${size}`;
+}
+
 function birthDateForAge(age) {
   const today = new Date();
   const year = today.getUTCFullYear() - age;
@@ -326,7 +446,7 @@ function generatedRobotProfile({ displayName, age, sex, countryCode, state, city
   const lookingFor = sex === 'Man' ? 'Women' : sex === 'Woman' ? 'Men' : 'Everyone';
   const interests = ['Traveling', 'Cooking', 'Music'];
   const bio = `${displayName} enjoys good conversation, local discoveries, and relaxed moments in ${city}. Kindness, curiosity, and a sense of humor matter most.`;
-  const profilePhoto = defaultProfilePhoto(sex);
+  const profilePhoto = generatedProfilePhoto(sex, `${displayName}-${state}-${city}`.length);
   return {
     displayName,
     birthDate: birthDateForAge(age),
@@ -359,10 +479,11 @@ function customerPhoto(row) {
   const stored = row.ProfilePhoto || defaultProfilePhoto(row.Sex);
   const separator = stored.lastIndexOf('#');
   if (separator > 0) {
+    const [position, size = '300% 200%'] = stored.slice(separator + 1).split('|');
     return {
       src: stored.slice(0, separator),
-      position: stored.slice(separator + 1),
-      size: '300% 200%'
+      position,
+      size
     };
   }
   return { src: stored, position: '50% 50%', size: 'cover' };
@@ -752,9 +873,310 @@ function findOrCreateConversation(db, customerId, targetCustomerId) {
   return conversation;
 }
 
+function insertRobotReply(db, {
+  robot,
+  realCustomerId,
+  conversationId,
+  incomingChatRecordId,
+  text,
+  customerInfo = null,
+  timestamp = new Date()
+}) {
+  const generated = generateRobotReply(db, {
+    robot,
+    realCustomerId,
+    conversationId,
+    incomingChatRecordId,
+    text,
+    customerInfo,
+    timestamp
+  });
+  if (!generated.reply) {
+    audit(
+      db,
+      'RobotCustomer',
+      robot.CustomerId,
+      'RobotCustomerResponseDeferred',
+      'ChatRecord',
+      incomingChatRecordId,
+      { conversationId, reason: generated.reason }
+    );
+    return { robotReply: null, reason: generated.reason };
+  }
+
+  const robotReplyTime = new Date(timestamp.getTime() + 1).toISOString();
+  const robotReplyId = randomUUID();
+  db.prepare(`
+    INSERT INTO ChatRecords (
+      ChatRecordId, ConversationId, ChatTime, SenderId,
+      ReceiverId, Text, MessageType, CreditUsed, ResponseSource
+    ) VALUES (?, ?, ?, ?, ?, ?, 'Text', 0, ?)
+  `).run(
+    robotReplyId,
+    conversationId,
+    robotReplyTime,
+    robot.CustomerId,
+    realCustomerId,
+    generated.reply.text,
+    generated.reply.responseSource
+  );
+
+  if (generated.reply.usage) {
+    const usage = generated.reply.usage;
+    db.prepare(`
+      INSERT INTO RobotAIUsage (
+        RobotAIUsageId, RobotCustomerId, ConversationId,
+        IncomingChatRecordId, OutgoingChatRecordId, Provider, Model,
+        RobotAIPolicyVersion, ResponseMode, InputTokens,
+        CachedInputTokens, OutputTokens, EstimatedCost, CurrencyCode,
+        LatencyMilliseconds, UsageStatus, SafetyResult,
+        LocalValidationResult, CorrelationId, CreateTime
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD',
+        1, 'Accepted', 'Passed', 'Passed', ?, ?)
+    `).run(
+      usage.robotAIUsageId,
+      robot.CustomerId,
+      conversationId,
+      incomingChatRecordId,
+      robotReplyId,
+      usage.provider,
+      usage.model,
+      usage.policyVersion,
+      usage.responseMode,
+      usage.inputTokens,
+      usage.cachedInputTokens,
+      usage.outputTokens,
+      usage.estimatedCost,
+      randomUUID(),
+      robotReplyTime
+    );
+  }
+
+  db.prepare('UPDATE Conversations SET UpdatedAt = ? WHERE ConversationId = ?').run(
+    robotReplyTime,
+    conversationId
+  );
+  audit(
+    db,
+    'RobotCustomer',
+    robot.CustomerId,
+    'RobotCustomerResponseSent',
+    'ChatRecord',
+    robotReplyId,
+    {
+      conversationId,
+      inReplyTo: incomingChatRecordId,
+      responseSource: generated.reply.responseSource,
+      robotAIPolicyVersion: generated.reply.policyVersion
+    }
+  );
+
+  return {
+    robotReply: {
+      chatRecordId: robotReplyId,
+      chatTime: robotReplyTime,
+      senderId: robot.CustomerId,
+      receiverId: realCustomerId,
+      text: generated.reply.text,
+      responseSource: generated.reply.responseSource
+    },
+    reason: null
+  };
+}
+
+function customerMainInfo(db, customerId) {
+  const row = db.prepare(`
+    SELECT CustomerId, DisplayName, BirthDate, Sex, GenderLookingFor,
+      CountryCode, StateId, CityName, Bio, TraitsJson, InterestsJson, GoalsJson
+    FROM CustomerProfile
+    WHERE CustomerId = ?
+  `).get(customerId);
+  if (!row) return null;
+  return {
+    customerId: row.CustomerId,
+    displayName: row.DisplayName,
+    birthDate: row.BirthDate,
+    sex: row.Sex,
+    lookingFor: row.GenderLookingFor,
+    countryCode: row.CountryCode,
+    state: row.StateId,
+    city: row.CityName,
+    bio: row.Bio,
+    traits: JSON.parse(row.TraitsJson || '[]'),
+    interests: JSON.parse(row.InterestsJson || '[]'),
+    goals: JSON.parse(row.GoalsJson || '[]')
+  };
+}
+
+function createRobotRequestQueue(db) {
+  const customerInfoById = new Map();
+  const queue = [];
+  const queuedChatIds = new Set();
+  let processing = false;
+  let scheduled = false;
+
+  function cachedCustomerInfo(customerId) {
+    if (!customerInfoById.has(customerId)) {
+      customerInfoById.set(customerId, customerMainInfo(db, customerId));
+    }
+    return customerInfoById.get(customerId);
+  }
+
+  function enqueue(request, options = {}) {
+    const incomingChatRecordId = request.incomingChatRecordId || request.IncomingChatRecordId;
+    if (!incomingChatRecordId || queuedChatIds.has(incomingChatRecordId)) return false;
+    queue.push({
+      robotId: request.robotId || request.CustomerId,
+      realCustomerId: request.realCustomerId || request.RealCustomerId,
+      conversationId: request.conversationId || request.ConversationId,
+      incomingChatRecordId,
+      text: request.text || request.IncomingText,
+      requestedAt: request.requestedAt || new Date().toISOString()
+    });
+    queuedChatIds.add(incomingChatRecordId);
+    if (options.wake !== false) wake();
+    return true;
+  }
+
+  function wake() {
+    if (processing || scheduled) return;
+    scheduled = true;
+    setImmediate(() => {
+      scheduled = false;
+      try {
+        process();
+      } catch (error) {
+        console.error('Robot queue failed', error);
+      }
+    });
+  }
+
+  function process(limit = 50) {
+    if (processing) return { processed: 0, sent: 0, deferred: 0, queueLength: queue.length };
+    processing = true;
+    let processed = 0;
+    let sent = 0;
+    let deferred = 0;
+    try {
+      while (queue.length && processed < limit) {
+        const request = queue.shift();
+        queuedChatIds.delete(request.incomingChatRecordId);
+        processed += 1;
+
+        const robot = db.prepare(`
+          SELECT * FROM CustomerProfile
+          WHERE CustomerId = ? AND Seed = ? AND Active = 1
+        `).get(request.robotId, CUSTOMER_TYPE.ROBOT);
+        const message = db.prepare(`
+          SELECT * FROM ChatRecords
+          WHERE ChatRecordId = ? AND SenderId = ? AND ConversationId = ?
+        `).get(request.incomingChatRecordId, request.realCustomerId, request.conversationId);
+        if (!robot || !message) {
+          deferred += 1;
+          continue;
+        }
+
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          const result = insertRobotReply(db, {
+            robot,
+            realCustomerId: request.realCustomerId,
+            conversationId: request.conversationId,
+            incomingChatRecordId: request.incomingChatRecordId,
+            text: request.text,
+            customerInfo: cachedCustomerInfo(request.realCustomerId),
+            timestamp: new Date()
+          });
+          if (result.robotReply) sent += 1;
+          else deferred += 1;
+          db.exec('COMMIT');
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
+        }
+      }
+    } finally {
+      processing = false;
+      if (queue.length) wake();
+    }
+    return { processed, sent, deferred, queueLength: queue.length };
+  }
+
+  function snapshot() {
+    return {
+      queueLength: queue.length,
+      cachedCustomers: customerInfoById.size,
+      processing
+    };
+  }
+
+  return { enqueue, process, snapshot };
+}
+
+function pendingRobotMessages(db, timestamp = new Date(), limit = 50) {
+  const current = timestamp.toISOString();
+  return db.prepare(`
+    SELECT
+      c.ConversationId,
+      robot.*,
+      real.CustomerId AS RealCustomerId,
+      latest.ChatRecordId AS IncomingChatRecordId,
+      latest.Text AS IncomingText
+    FROM RobotShiftSchedule s
+    JOIN CustomerProfile robot ON robot.CustomerId = s.RobotCustomerId
+    JOIN Conversations c
+      ON c.CustomerAId = robot.CustomerId OR c.CustomerBId = robot.CustomerId
+    JOIN CustomerProfile real
+      ON real.CustomerId = CASE
+        WHEN c.CustomerAId = robot.CustomerId THEN c.CustomerBId
+        ELSE c.CustomerAId
+      END
+    JOIN ChatRecords latest
+      ON latest.ConversationId = c.ConversationId
+      AND latest.ChatTime = (
+        SELECT MAX(m.ChatTime)
+        FROM ChatRecords m
+        WHERE m.ConversationId = c.ConversationId
+      )
+    WHERE s.ShiftStatus = 'Active'
+      AND s.PlannedStartTime <= ? AND s.PlannedEndTime > ?
+      AND robot.Seed = ?
+      AND robot.Active = 1
+      AND real.Seed = ?
+      AND real.Active = 1
+      AND latest.SenderId = real.CustomerId
+    ORDER BY latest.ChatTime
+    LIMIT ?
+  `).all(current, current, CUSTOMER_TYPE.ROBOT, CUSTOMER_TYPE.REAL, limit);
+}
+
+function processPendingRobotReplies(db, timestamp = new Date(), limit = 50) {
+  return processPendingRobotRepliesWithQueue(db, createRobotRequestQueue(db), timestamp, limit);
+}
+
+function processPendingRobotRepliesWithQueue(db, robotQueue, timestamp = new Date(), limit = 50) {
+  reconcileRobotOperations(db, timestamp);
+  const pending = pendingRobotMessages(db, timestamp, limit);
+  for (const row of pending) robotQueue.enqueue(row, { wake: false });
+  return robotQueue.process(limit);
+}
+
 function createApplication(options = {}) {
   const db = options.db || openDatabase(options.databasePath);
+  const robotQueue = createRobotRequestQueue(db);
   reconcileRobotOperations(db);
+  processPendingRobotRepliesWithQueue(db, robotQueue);
+  let robotWorker = null;
+  if (options.robotWorker !== false) {
+    robotWorker = setInterval(() => {
+      try {
+        processPendingRobotRepliesWithQueue(db, robotQueue);
+      } catch (error) {
+        console.error('Robot worker failed', error);
+      }
+    }, options.robotWorkerIntervalMs || ROBOT_WORKER_INTERVAL_MS);
+    robotWorker.unref?.();
+  }
 
   async function handleApi(req, res, url, requestId) {
     const { pathname, searchParams } = url;
@@ -1221,10 +1643,60 @@ function createApplication(options = {}) {
       return json(res, 200, envelope(editableCustomerProfile(updated), requestId));
     }
 
+    if (req.method === 'GET' && pathname === '/api/v1/customer/discovery/locations') {
+      const session = authenticate(db, req, 'Customer');
+      const rows = db.prepare(`
+        SELECT CountryCode, StateId, CityName
+        FROM CustomerProfile
+        WHERE Active = 1
+          AND CustomerId <> ?
+          AND COALESCE(CountryCode, '') <> ''
+          AND COALESCE(StateId, '') <> ''
+          AND COALESCE(CityName, '') <> ''
+        GROUP BY CountryCode, StateId, CityName
+        ORDER BY CountryCode, StateId, CityName
+      `).all(session.PrincipalId);
+      const countriesByCode = new Map();
+      for (const row of rows) {
+        if (!countriesByCode.has(row.CountryCode)) {
+          countriesByCode.set(row.CountryCode, {
+            code: row.CountryCode,
+            name: COUNTRY_NAMES[row.CountryCode] || row.CountryCode,
+            states: [],
+            stateMap: new Map()
+          });
+        }
+        const country = countriesByCode.get(row.CountryCode);
+        if (!country.stateMap.has(row.StateId)) {
+          country.stateMap.set(row.StateId, {
+            code: row.StateId,
+            name: row.CountryCode === 'US'
+              ? US_STATE_NAMES[row.StateId] || row.StateId
+              : row.StateId,
+            cities: []
+          });
+          country.states.push(country.stateMap.get(row.StateId));
+        }
+        country.stateMap.get(row.StateId).cities.push(row.CityName);
+      }
+      const countries = [...countriesByCode.values()].map((country) => ({
+        code: country.code,
+        name: country.name,
+        states: country.states.map((item) => ({
+          code: item.code,
+          name: item.name,
+          cities: item.cities
+        }))
+      }));
+      return json(res, 200, envelope({ countries }, requestId));
+    }
+
     if (req.method === 'GET' && pathname === '/api/v1/customer/discovery/profiles') {
       const session = authenticate(db, req, 'Customer');
       const viewer = getCustomer(db, session.PrincipalId);
       const query = String(searchParams.get('query') || '').trim();
+      const countryCode = String(searchParams.get('countryCode') || '').trim().toUpperCase();
+      const stateFilter = String(searchParams.get('state') || '').trim();
       const city = String(searchParams.get('city') || '').trim();
       const requestedSex = parseSexFilter(searchParams.get('sex'));
       const orientationAllowed = orientationSexes(viewer.GenderLookingFor);
@@ -1253,6 +1725,8 @@ function createApplication(options = {}) {
           AND p.Sex IN (${sexPlaceholders})
           AND CAST((julianday('now') - julianday(p.BirthDate)) / 365.2425 AS INTEGER)
             BETWEEN ? AND ?
+          AND (? = '' OR p.CountryCode = ?)
+          AND (? = '' OR p.StateId = ?)
           AND (? = '' OR p.CityName LIKE ?)
           AND (
             ? = ''
@@ -1271,6 +1745,10 @@ function createApplication(options = {}) {
         ...sexFilters,
         minAge,
         maxAge,
+        countryCode,
+        countryCode,
+        stateFilter,
+        stateFilter,
         city,
         cityLike,
         query,
@@ -1459,6 +1937,7 @@ function createApplication(options = {}) {
       const timestamp = now();
       const chatRecordId = randomUUID();
       let response;
+      let robotQueueRequest = null;
 
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -1507,99 +1986,14 @@ function createApplication(options = {}) {
         );
         let robotReply = null;
         if (receiver.Seed === CUSTOMER_TYPE.ROBOT) {
-          const generated = generateRobotReply(db, {
-            robot: receiver,
+          robotQueueRequest = {
+            robotId: receiver.CustomerId,
             realCustomerId: session.PrincipalId,
             conversationId: params.conversationId,
             incomingChatRecordId: chatRecordId,
             text,
-            timestamp: new Date(timestamp),
-            allowOffShift: true
-          });
-          if (generated.reply) {
-            const robotReplyTime = new Date(Date.parse(timestamp) + 1).toISOString();
-            const robotReplyId = randomUUID();
-            db.prepare(`
-              INSERT INTO ChatRecords (
-                ChatRecordId, ConversationId, ChatTime, SenderId,
-                ReceiverId, Text, MessageType, CreditUsed, ResponseSource
-              ) VALUES (?, ?, ?, ?, ?, ?, 'Text', 0, ?)
-            `).run(
-              robotReplyId,
-              params.conversationId,
-              robotReplyTime,
-              receiverId,
-              session.PrincipalId,
-              generated.reply.text,
-              generated.reply.responseSource
-            );
-            robotReply = {
-              chatRecordId: robotReplyId,
-              chatTime: robotReplyTime,
-              senderId: receiverId,
-              receiverId: session.PrincipalId,
-              text: generated.reply.text,
-              responseSource: generated.reply.responseSource
-            };
-            if (generated.reply.usage) {
-              const usage = generated.reply.usage;
-              db.prepare(`
-                INSERT INTO RobotAIUsage (
-                  RobotAIUsageId, RobotCustomerId, ConversationId,
-                  IncomingChatRecordId, OutgoingChatRecordId, Provider, Model,
-                  RobotAIPolicyVersion, ResponseMode, InputTokens,
-                  CachedInputTokens, OutputTokens, EstimatedCost, CurrencyCode,
-                  LatencyMilliseconds, UsageStatus, SafetyResult,
-                  LocalValidationResult, CorrelationId, CreateTime
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD',
-                  1, 'Accepted', 'Passed', 'Passed', ?, ?)
-              `).run(
-                usage.robotAIUsageId,
-                receiverId,
-                params.conversationId,
-                chatRecordId,
-                robotReplyId,
-                usage.provider,
-                usage.model,
-                usage.policyVersion,
-                usage.responseMode,
-                usage.inputTokens,
-                usage.cachedInputTokens,
-                usage.outputTokens,
-                usage.estimatedCost,
-                randomUUID(),
-                robotReplyTime
-              );
-            }
-            db.prepare('UPDATE Conversations SET UpdatedAt = ? WHERE ConversationId = ?').run(
-              robotReplyTime,
-              params.conversationId
-            );
-            audit(
-              db,
-              'RobotCustomer',
-              receiverId,
-              'RobotCustomerResponseSent',
-              'ChatRecord',
-              robotReplyId,
-              {
-                conversationId: params.conversationId,
-                inReplyTo: chatRecordId,
-                responseSource: generated.reply.responseSource,
-                robotAIPolicyVersion: generated.reply.policyVersion
-              }
-            );
-          } else {
-            audit(
-              db,
-              'RobotCustomer',
-              receiverId,
-              'RobotCustomerResponseDeferred',
-              'ChatRecord',
-              chatRecordId,
-              { conversationId: params.conversationId, reason: generated.reason }
-            );
-          }
+            requestedAt: timestamp
+          };
         }
         response = {
           chatRecordId,
@@ -1627,6 +2021,7 @@ function createApplication(options = {}) {
         db.exec('ROLLBACK');
         throw error;
       }
+      if (robotQueueRequest) robotQueue.enqueue(robotQueueRequest);
       return json(res, 201, envelope(response, requestId));
     }
 
@@ -3293,6 +3688,15 @@ function createApplication(options = {}) {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname.startsWith('/api/')) {
+        applyCors(req, res);
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, {
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff'
+          });
+          res.end();
+          return;
+        }
         await handleApi(req, res, url, requestId);
         return;
       }
@@ -3313,7 +3717,14 @@ function createApplication(options = {}) {
   return {
     db,
     handler,
+    processRobotReplies(timestamp = new Date(), limit = 50) {
+      return processPendingRobotRepliesWithQueue(db, robotQueue, timestamp, limit);
+    },
+    robotQueueSnapshot() {
+      return robotQueue.snapshot();
+    },
     close() {
+      if (robotWorker) clearInterval(robotWorker);
       db.close();
     }
   };

@@ -148,8 +148,20 @@
             <span aria-hidden="true">⌕</span>
             <input id="search-input" name="query" type="search" placeholder="Name, city, or interest" aria-label="Search profiles">
           </label>
+          <label>Country
+            <select name="countryCode">
+              <option value="">Any country</option>
+            </select>
+          </label>
+          <label>State
+            <select name="state" disabled>
+              <option value="">Any state</option>
+            </select>
+          </label>
           <label>City
-            <input name="city" type="search" placeholder="Any city" maxlength="120">
+            <select name="city" disabled>
+              <option value="">Any city</option>
+            </select>
           </label>
           <label>Age from
             <input name="minAge" type="number" min="18" max="120" placeholder="18">
@@ -165,6 +177,7 @@
               <option value="Nonbinary">Nonbinary</option>
             </select>
           </label>
+          <button class="primary-button" type="submit">Search</button>
           <button class="secondary-button" type="reset">Clear</button>
         </form>
         <div id="profile-grid" class="profile-grid" aria-live="polite"></div>

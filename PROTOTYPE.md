@@ -41,6 +41,9 @@ address may change after reconnecting to Wi-Fi.
 | Administrator | `admin@datingeasy.test` | `Demo123!` |
 | CEO | `ceo@datingeasy.test` | `Demo123!` |
 
+Additional active test chat employees use `test-employee-001@datingeasy.test`
+through `test-employee-010@datingeasy.test`, all with password `Demo123!`.
+
 ## Included
 
 - Customer registration, sign-in, logout, and 18+ validation
@@ -53,11 +56,15 @@ address may change after reconnecting to Wi-Fi.
 - Responsive profile discovery using original synthetic portraits
 - Customer-facing profiles hide internal real, seed, and robot classifications
 - Three customer types: real, employee-operated seed, and autonomous robot
-- Review seed data includes 200 real customers, 5 employee-operated seed
-  customers, and 12 autonomous robot customers
+- Review seed data includes 200 real customers, 1,005 employee-operated seed
+  customers, and 412 autonomous robot customers
+- Permanent platform baseline includes 50 US major cities with 6 female robot
+  customers, 2 male robot customers, 15 female seed customers, and 5 male seed
+  customers per city
 - Enforced real-real, real-seed, and real-robot conversation matrix
-- Immediate prototype robot-customer responses with no employee assignment,
-  including direct chats with non-scheduled robot profiles such as Grace
+- Queued robot-customer responses with no employee assignment; online robots
+  process customer messages through a FIFO queue and off-line robots answer
+  after they come online
 - Profile detail and favorites
 - Double-click conversation avatars to open the partner profile
 - Add or remove the active chat partner from Favorites in the chat header

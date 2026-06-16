@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: arfa-prototype
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production

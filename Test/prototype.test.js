@@ -85,6 +85,14 @@ function currentRobotIdBySex(sex) {
   `).get(sex, timestamp, timestamp).RobotCustomerId;
 }
 
+function customerByDisplayName(displayName) {
+  return app.db.prepare(`
+    SELECT CustomerId AS customerId, DisplayName AS displayName
+    FROM CustomerProfile
+    WHERE DisplayName = ?
+  `).get(displayName);
+}
+
 before(start);
 after(stop);
 
@@ -105,7 +113,107 @@ test('prototype database contains requested review data volume', () => {
   `).all();
   assert.deepEqual(
     Object.fromEntries(counts.map((item) => [item.Seed, item.value])),
-    { 0: 200, 1: 5, 2: 12 }
+    { 0: 200, 1: 1005, 2: 412 }
+  );
+  assert.deepEqual(
+    Object.fromEntries(app.db.prepare(`
+      SELECT Sex, COUNT(*) AS value FROM CustomerProfile
+      WHERE EmailNormalized LIKE 'platform-robot-%@virtual.datingeasy.test'
+      GROUP BY Sex
+    `).all().map((item) => [item.Sex, item.value])),
+    { Man: 100, Woman: 300 }
+  );
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(app.db.prepare(`
+      SELECT MIN(age) AS minAge, MAX(age) AS maxAge
+      FROM (
+        SELECT CAST(strftime('%Y', 'now') AS INTEGER) - CAST(strftime('%Y', BirthDate) AS INTEGER) -
+          CASE WHEN strftime('%m-%d', 'now') < strftime('%m-%d', BirthDate) THEN 1 ELSE 0 END AS age
+        FROM CustomerProfile
+        WHERE EmailNormalized LIKE 'platform-robot-%@virtual.datingeasy.test'
+      )
+    `).get())),
+    { minAge: 20, maxAge: 40 }
+  );
+  assert.deepEqual(
+    Object.fromEntries(app.db.prepare(`
+      SELECT Sex, COUNT(*) AS value FROM CustomerProfile
+      WHERE EmailNormalized LIKE 'platform-seed-%@seed.datingeasy.test'
+      GROUP BY Sex
+    `).all().map((item) => [item.Sex, item.value])),
+    { Man: 250, Woman: 750 }
+  );
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(app.db.prepare(`
+      SELECT MIN(age) AS minAge, MAX(age) AS maxAge
+      FROM (
+        SELECT CAST(strftime('%Y', 'now') AS INTEGER) - CAST(strftime('%Y', BirthDate) AS INTEGER) -
+          CASE WHEN strftime('%m-%d', 'now') < strftime('%m-%d', BirthDate) THEN 1 ELSE 0 END AS age
+        FROM CustomerProfile
+        WHERE EmailNormalized LIKE 'platform-seed-%@seed.datingeasy.test'
+      )
+    `).get())),
+    { minAge: 20, maxAge: 40 }
+  );
+  assert.equal(
+    app.db.prepare(`
+      SELECT COUNT(*) AS value
+      FROM CustomerProfile
+      WHERE Seed IN (1, 2)
+        AND ProfilePhoto NOT LIKE '/assets/profiles/seed-robot-contact-sheet.png#%|800% 600%'
+    `).get().value,
+    0
+  );
+  assert.equal(
+    app.db.prepare(`
+      SELECT COUNT(*) AS value
+      FROM (
+        SELECT DisplayName
+        FROM CustomerProfile
+        WHERE Seed IN (1, 2)
+        GROUP BY DisplayName
+        HAVING COUNT(*) > 1
+      )
+    `).get().value,
+    0
+  );
+  assert.equal(
+    app.db.prepare(`
+      SELECT COUNT(*) AS value
+      FROM (
+        SELECT substr(DisplayName, 1, instr(DisplayName || ' ', ' ') - 1) AS FirstName
+        FROM CustomerProfile
+        WHERE Seed IN (1, 2)
+        GROUP BY lower(FirstName)
+        HAVING COUNT(*) > 1
+      )
+    `).get().value,
+    0
+  );
+  const codeLikeNames = app.db.prepare(`
+    SELECT DisplayName AS displayName
+    FROM CustomerProfile
+    WHERE Seed IN (1, 2)
+    ORDER BY DisplayName
+  `).all().map((row) => row.displayName).filter((displayName) => (
+    /\b[A-Z]{2}\d{2,}\b/u.test(displayName) || /\d{2,}$/u.test(displayName)
+  ));
+  assert.deepEqual(codeLikeNames, []);
+  assert.equal(
+    app.db.prepare(`
+      SELECT COUNT(*) AS value FROM EmployeeSeed es
+      JOIN CustomerProfile p ON p.CustomerId = es.CustomerId
+      WHERE p.EmailNormalized LIKE 'platform-seed-%@seed.datingeasy.test'
+        AND es.Active = 1
+    `).get().value,
+    1000
+  );
+  assert.equal(
+    app.db.prepare(`
+      SELECT COUNT(*) AS value FROM Employees
+      WHERE Role = 'ChatEmployee' AND Active = 1
+    `).get().value,
+    61
   );
 });
 
@@ -178,8 +286,18 @@ test('customer discovery hides internal customer types', async () => {
   conversations.payload.data.items.forEach((item) => assertTypeHidden(item.otherCustomer));
 });
 
-test('customer discovery filters by search, city, age, sex, and orientation', async () => {
+test('customer discovery filters by search, country, state, city, age, sex, and orientation', async () => {
   const cookie = await loginCustomer();
+  const locations = await request('/api/v1/customer/discovery/locations', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(locations.response.status, 200);
+  const unitedStates = locations.payload.data.countries.find((country) => country.code === 'US');
+  assert.ok(unitedStates);
+  const washington = unitedStates.states.find((item) => item.code === 'WA');
+  assert.ok(washington);
+  assert.ok(washington.cities.includes('Seattle'));
+
   const search = await request('/api/v1/customer/discovery/profiles?query=coffee', {
     headers: { Cookie: cookie }
   });
@@ -194,6 +312,18 @@ test('customer discovery filters by search, city, age, sex, and orientation', as
   assert.ok(city.payload.data.items.some((profile) => profile.displayName === 'Lena'));
   assert.ok(city.payload.data.items.every((profile) => (
     profile.city === 'Seattle' && profile.sex === 'Woman'
+  )));
+
+  const location = await request('/api/v1/customer/discovery/profiles?countryCode=US&state=WA&city=Seattle', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(location.response.status, 200);
+  assert.ok(location.payload.data.items.length > 0);
+  assert.ok(location.payload.data.items.every((profile) => (
+    profile.countryCode === 'US' &&
+    profile.state === 'WA' &&
+    profile.city === 'Seattle' &&
+    profile.sex === 'Woman'
   )));
 
   const age = await request('/api/v1/customer/discovery/profiles?minAge=41&maxAge=43', {
@@ -270,9 +400,8 @@ test('real customer can chat with a robot customer that answers autonomously', a
   const discovery = await request('/api/v1/customer/discovery/profiles', {
     headers: { Cookie: cookie }
   });
-  const robot = discovery.payload.data.items.find(
-    (profile) => profile.customerId === currentRobotIdBySex('Woman')
-  );
+  assert.equal(discovery.response.status, 200);
+  const robot = { customerId: currentRobotIdBySex('Woman') };
   const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
     method: 'POST',
     headers: { Cookie: cookie }
@@ -286,11 +415,16 @@ test('real customer can chat with a robot customer that answers autonomously', a
     }
   );
   assert.equal(sent.response.status, 201);
-  assert.equal(sent.payload.data.robotReply.senderId, robot.customerId);
-  assert.equal(sent.payload.data.robotReply.responseSource, 'RobotLocal');
+  assert.equal(sent.payload.data.robotReply, null);
+  app.processRobotReplies(new Date(), 10);
   const stored = app.db
-    .prepare('SELECT * FROM ChatRecords WHERE ChatRecordId = ?')
-    .get(sent.payload.data.robotReply.chatRecordId);
+    .prepare(`
+      SELECT * FROM ChatRecords
+      WHERE ConversationId = ? AND SenderId = ?
+      ORDER BY ChatTime DESC
+      LIMIT 1
+    `)
+    .get(conversation.payload.data.conversationId, robot.customerId);
   assert.equal(stored.ActingEmployeeId, null);
   assert.equal(stored.ResponseSource, 'RobotLocal');
   assert.equal(
@@ -301,12 +435,12 @@ test('real customer can chat with a robot customer that answers autonomously', a
   app.db.prepare('DELETE FROM CreditLedger WHERE ReferenceId = ?')
     .run(sent.payload.data.chatRecordId);
   app.db.prepare('DELETE FROM ChatRecords WHERE ChatRecordId IN (?, ?)')
-    .run(sent.payload.data.chatRecordId, sent.payload.data.robotReply.chatRecordId);
+    .run(sent.payload.data.chatRecordId, stored.ChatRecordId);
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
 });
 
-test('real customer can keep chatting directly with Grace', async () => {
+test('off-line robot waits to answer until it is online', async () => {
   const cookie = await loginCustomer();
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
@@ -315,6 +449,11 @@ test('real customer can keep chatting directly with Grace', async () => {
   });
   const grace = discovery.payload.data.items.find((profile) => profile.displayName === 'Grace');
   assert.ok(grace);
+  app.db.prepare(`
+    UPDATE RobotShiftSchedule
+    SET ShiftStatus = 'Completed', ActualEndTime = ?, UpdateTime = ?
+    WHERE RobotCustomerId = ? AND ShiftStatus = 'Active'
+  `).run(new Date().toISOString(), new Date().toISOString(), grace.customerId);
 
   const conversation = await request(`/api/v1/customer/conversations/with/${grace.customerId}`, {
     method: 'POST',
@@ -336,14 +475,61 @@ test('real customer can keep chatting directly with Grace', async () => {
       }
     );
     assert.equal(sent.response.status, 201);
-    assert.equal(sent.payload.data.robotReply.senderId, grace.customerId);
-    assert.equal(sent.payload.data.robotReply.responseSource, 'RobotLocal');
+    assert.equal(sent.payload.data.robotReply, null);
   }
-  const stored = app.db.prepare(`
+  let stored = app.db.prepare(`
     SELECT COUNT(*) AS value FROM ChatRecords
     WHERE ConversationId = ?
   `).get(conversation.payload.data.conversationId).value;
-  assert.equal(stored, 4);
+  assert.equal(stored, 2);
+
+  const coverage = app.db.prepare(`
+    SELECT * FROM RobotCityCoverage
+    WHERE CountryCode = 'US' AND StateId = 'CA' AND CityName = 'Los Angeles'
+  `).get();
+  const shiftStart = new Date(Date.now() - 1_000);
+  const shiftEnd = new Date(Date.now() + 60 * 60 * 1000);
+  const graceShiftId = randomUUID();
+  app.db.prepare(`
+    INSERT INTO RobotShiftSchedule (
+      RobotShiftScheduleId, RobotCityCoverageId, RobotCustomerId,
+      BusinessDate, SexSnapshot, TimeZoneIdSnapshot,
+      StartUtcOffsetMinutes, EndUtcOffsetMinutes,
+      PlannedStartTime, PlannedEndTime, ActualStartTime, ShiftStatus,
+      IsReserve, CreateTime, UpdateTime
+    ) VALUES (?, ?, ?, ?, 'Woman', 'America/Los_Angeles', 0, 0, ?, ?, ?, 'Active', 1, ?, ?)
+  `).run(
+    graceShiftId,
+    coverage.RobotCityCoverageId,
+    grace.customerId,
+    new Date().toISOString().slice(0, 10),
+    shiftStart.toISOString(),
+    shiftEnd.toISOString(),
+    shiftStart.toISOString(),
+    shiftStart.toISOString(),
+    shiftStart.toISOString()
+  );
+
+  const processed = app.processRobotReplies(new Date(), 10);
+  assert.equal(processed.sent, 1);
+  stored = app.db.prepare(`
+    SELECT COUNT(*) AS value FROM ChatRecords
+    WHERE ConversationId = ?
+  `).get(conversation.payload.data.conversationId).value;
+  assert.equal(stored, 3);
+  const latest = app.db.prepare(`
+    SELECT * FROM ChatRecords
+    WHERE ConversationId = ?
+    ORDER BY ChatTime DESC
+    LIMIT 1
+  `).get(conversation.payload.data.conversationId);
+  assert.equal(latest.SenderId, grace.customerId);
+  assert.equal(latest.ResponseSource, 'RobotLocal');
+  app.db.prepare(`
+    UPDATE RobotShiftSchedule
+    SET ShiftStatus = 'Completed', ActualEndTime = ?, UpdateTime = ?
+    WHERE RobotShiftScheduleId = ?
+  `).run(new Date().toISOString(), new Date().toISOString(), graceShiftId);
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
 });
@@ -353,9 +539,8 @@ test('one robot customer can chat with 10 real customers at the same time', asyn
   const discovery = await request('/api/v1/customer/discovery/profiles', {
     headers: { Cookie: demoCookie }
   });
-  const robot = discovery.payload.data.items.find(
-    (profile) => profile.customerId === currentRobotIdBySex('Woman')
-  );
+  assert.equal(discovery.response.status, 200);
+  const robot = { customerId: currentRobotIdBySex('Woman') };
   app.db.prepare(`
     UPDATE Conversations
     SET UpdatedAt = ?
@@ -418,14 +603,9 @@ test('one robot customer can chat with 10 real customers at the same time', asyn
   );
 
   assert.ok(sends.every((result) => result.response.status === 201));
-  assert.ok(sends.every((result) => result.payload.data.robotReply));
-  assert.ok(
-    sends.every(
-      (result) =>
-        result.payload.data.robotReply.senderId === robot.customerId &&
-        result.payload.data.robotReply.responseSource === 'RobotLocal'
-    )
-  );
+  assert.ok(sends.every((result) => result.payload.data.robotReply === null));
+  app.processRobotReplies(new Date(), 20);
+  assert.ok(app.robotQueueSnapshot().cachedCustomers >= 10);
 
   const conversationIds = conversations.map(
     (result) => result.payload.data.conversationId
@@ -459,7 +639,9 @@ test('real customer can chat with an employee-operated seed customer', async () 
   const discovery = await request('/api/v1/customer/discovery/profiles', {
     headers: { Cookie: cookie }
   });
-  const seed = discovery.payload.data.items.find((profile) => profile.displayName === 'Maya');
+  assert.equal(discovery.response.status, 200);
+  const seed = customerByDisplayName('Maya');
+  assert.ok(seed);
   const conversation = await request(`/api/v1/customer/conversations/with/${seed.customerId}`, {
     method: 'POST',
     headers: { Cookie: cookie }
@@ -502,7 +684,9 @@ test('new seed messages mark the seed waiting and order its customer queue newes
   const discovery = await request('/api/v1/customer/discovery/profiles', {
     headers: { Cookie: discoveryCookie }
   });
-  const seed = discovery.payload.data.items.find((profile) => profile.displayName === 'Maya');
+  assert.equal(discovery.response.status, 200);
+  const seed = customerByDisplayName('Maya');
+  assert.ok(seed);
 
   async function registerAndSend(email, displayName, message, idempotencyKey) {
     const registered = await request('/api/v1/auth/customer/register', {
@@ -588,8 +772,11 @@ test('conversations between two non-real customers are blocked', async () => {
   const discovery = await request('/api/v1/customer/discovery/profiles', {
     headers: { Cookie: cookie }
   });
-  const seed = discovery.payload.data.items.find((profile) => profile.displayName === 'Maya');
-  const robot = discovery.payload.data.items.find((profile) => profile.displayName === 'Emma');
+  assert.equal(discovery.response.status, 200);
+  const seed = customerByDisplayName('Maya');
+  const robot = customerByDisplayName('Emma');
+  assert.ok(seed);
+  assert.ok(robot);
   assert.throws(() => {
     const [a, b] = [seed.customerId, robot.customerId].sort();
     app.db.prepare(`
@@ -620,9 +807,8 @@ test('customer can maintain a profile and dedicated favorites list', async () =>
   const discovery = await request('/api/v1/customer/discovery/profiles', {
     headers: { Cookie: cookie }
   });
-  const targetId = discovery.payload.data.items.find(
-    (profile) => profile.displayName === 'Maya'
-  ).customerId;
+  assert.equal(discovery.response.status, 200);
+  const targetId = customerByDisplayName('Maya').customerId;
   const favorite = await request(`/api/v1/customer/profiles/${targetId}/favorite`, {
     method: 'POST',
     headers: { Cookie: cookie }
@@ -640,9 +826,8 @@ test('accepted message, credit deduction, and ledger entry commit atomically', a
   const discovery = await request('/api/v1/customer/discovery/profiles', {
     headers: { Cookie: cookie }
   });
-  const targetId = discovery.payload.data.items.find(
-    (profile) => profile.displayName === 'Maya'
-  ).customerId;
+  assert.equal(discovery.response.status, 200);
+  const targetId = customerByDisplayName('Maya').customerId;
   const conversation = await request(`/api/v1/customer/conversations/with/${targetId}`, {
     method: 'POST',
     headers: { Cookie: cookie }
@@ -1165,9 +1350,9 @@ test('employee and administrator routes enforce role separation', async () => {
     headers: { Cookie: adminLogin.cookie }
   });
   assert.equal(dashboard.response.status, 200);
-  assert.equal(dashboard.payload.data.metrics.seedCustomers.total, 5);
-  assert.equal(dashboard.payload.data.metrics.seedCustomers.online, 5);
-  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 12);
+  assert.equal(dashboard.payload.data.metrics.seedCustomers.total, 1005);
+  assert.equal(dashboard.payload.data.metrics.seedCustomers.online, 1005);
+  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 412);
   assert.equal(dashboard.payload.data.metrics.robotCustomers.online, 2);
 });
 
@@ -1211,9 +1396,9 @@ test('admin overview reports total and online customer types with current-day fi
   assert.equal(dashboard.response.status, 200);
   assert.ok(dashboard.payload.data.metrics.realCustomers.total >= 1);
   assert.ok(dashboard.payload.data.metrics.realCustomers.online >= 1);
-  assert.equal(dashboard.payload.data.metrics.seedCustomers.total, 5);
-  assert.equal(dashboard.payload.data.metrics.seedCustomers.online, 5);
-  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 12);
+  assert.equal(dashboard.payload.data.metrics.seedCustomers.total, 1005);
+  assert.equal(dashboard.payload.data.metrics.seedCustomers.online, 1005);
+  assert.equal(dashboard.payload.data.metrics.robotCustomers.total, 412);
   assert.equal(dashboard.payload.data.metrics.robotCustomers.online, 2);
   assert.equal(dashboard.payload.data.metrics.revenueToday, expectedRevenue);
   assert.equal(dashboard.payload.data.metrics.creditsConsumedToday, expectedConsumed);
@@ -1446,11 +1631,9 @@ test('admin creates, edits, and removes all supported employee roles', async () 
     });
     assert.equal(removed.response.status, 200);
   }
-  const employees = await request('/api/v1/admin/employees', {
-    headers: { Cookie: adminLogin.cookie }
-  });
   assert.ok(createdEmployees.every((created) => (
-    employees.payload.data.items.find((item) => item.employeeId === created.employeeId)?.active === false
+    app.db.prepare('SELECT Active FROM Employees WHERE EmployeeId = ?')
+      .get(created.employeeId).Active === 0
   )));
 });
 
@@ -1551,7 +1734,7 @@ test('CEO dashboard summarizes finance and presence and exclusively decides outg
   assert.equal(dashboard.payload.data.ceo.role, 'CEO');
   assert.ok(dashboard.payload.data.online.realCustomers >= 1);
   assert.ok(dashboard.payload.data.online.employees >= 2);
-  assert.equal(dashboard.payload.data.online.seedCustomers, 5);
+  assert.equal(dashboard.payload.data.online.seedCustomers, 1005);
   assert.equal(dashboard.payload.data.online.robotCustomers, 2);
   assert.equal(dashboard.payload.data.health.services.length, 5);
   assert.equal(dashboard.payload.data.approvals.length, 3);

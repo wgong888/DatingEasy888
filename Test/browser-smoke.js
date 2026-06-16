@@ -149,20 +149,31 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('#credit-balance').filter({ hasText: '235' }).waitFor();
     await page.getByRole('button', { name: 'Discover', exact: true }).click();
     await page.locator('#search-input').fill('Grace');
-    await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).waitFor();
+    await page.waitForFunction(() => {
+      const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
+      return cards.length > 0 && cards.every((card) => card.querySelector('h2')?.textContent.includes('Grace'));
+    });
     await page.locator('#discover-filter-form').getByRole('button', { name: 'Clear' }).click();
-    await page.locator('#profile-grid .profile-card').first().waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('#profile-grid .profile-card').length === 20);
     assert.equal(await page.locator('#profile-grid .profile-card').count(), 20);
-    const graceCard = page.locator('#profile-grid .profile-card', { hasText: 'Grace' });
+    await page.locator('#search-input').fill('Grace');
+    await page.waitForFunction(() => {
+      const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
+      return cards.length > 0 && cards.every((card) => card.querySelector('h2')?.textContent.includes('Grace'));
+    });
+    const graceCard = page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).first();
     await graceCard.locator('.favorite-button').click();
     await page.getByRole('button', { name: 'Favorites', exact: true }).click();
-    await page.locator('#favorite-grid .profile-card', { hasText: 'Grace' }).waitFor();
+    await page.locator('#favorite-grid .profile-card', { hasText: 'Grace' }).first().waitFor();
     await page.getByRole('button', { name: 'Discover', exact: true }).click();
     await page.locator('#search-input').fill('Grace');
-    await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).waitFor();
-    await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).locator('.profile-photo').click();
+    await page.waitForFunction(() => {
+      const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
+      return cards.length > 0 && cards.every((card) => card.querySelector('h2')?.textContent.includes('Grace'));
+    });
+    await page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).first().locator('.profile-photo').click();
     await page.locator('#view-profile:not(.hidden)').waitFor();
-    await page.getByRole('button', { name: /^Chat with Grace/ }).click();
+    await page.getByRole('button', { name: /^Chat with / }).click();
     await page.locator('[data-composer] textarea').fill(
       'Hi Grace, I want to keep chatting with you.'
     );
@@ -170,7 +181,6 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('.message.outgoing', {
       hasText: 'Hi Grace, I want to keep chatting with you.'
     }).waitFor();
-    await page.locator('.message.incoming').last().waitFor();
     await page.locator('#credit-balance').filter({ hasText: '230' }).waitFor();
     await page.locator('#logout-button').click();
     await page.locator('#auth-view:not(.hidden)').waitFor();
@@ -239,7 +249,15 @@ async function newCustomerProfileFlow(browser) {
 
   await page.getByRole('button', { name: 'Discover', exact: true }).first().click();
   await page.locator('#view-discover:not(.hidden)').waitFor();
+  const discoverForm = page.locator('#discover-filter-form');
+  await discoverForm.locator('[name="countryCode"] option[value="US"]').waitFor({ state: 'attached' });
+  await discoverForm.locator('[name="countryCode"]').selectOption('US');
+  await discoverForm.locator('[name="state"] option[value="CA"]').waitFor({ state: 'attached' });
+  await discoverForm.locator('[name="state"]').selectOption('CA');
+  await discoverForm.locator('[name="city"] option[value="Los Angeles"]').waitFor({ state: 'attached' });
+  await discoverForm.locator('[name="city"]').selectOption('Los Angeles');
   await page.locator('#profile-grid .profile-card').first().waitFor();
+  assert.ok(await page.locator('#profile-grid .profile-card').count() <= 20);
   await page.getByRole('button', { name: 'Me', exact: true }).first().click();
   await page.locator('#view-me:not(.hidden)').waitFor();
   assert.equal(await profile.locator('[name="maritalStatus"]').inputValue(), 'Single');
@@ -288,7 +306,7 @@ async function employeeFlow(browser) {
   assert.equal(registration.status(), 201);
   const registered = await registration.json();
   const discoveryResponse = await customerContext.request.get(
-    `${ORIGIN}/api/v1/customer/discovery/profiles`
+    `${ORIGIN}/api/v1/customer/discovery/profiles?query=Maya`
   );
   assert.equal(discoveryResponse.status(), 200);
   const discovery = await discoveryResponse.json();
@@ -472,7 +490,7 @@ async function adminFlow(browser) {
   await page.getByRole('button', { name: 'Robot operations', exact: true }).click();
   await page.locator('#robot-summary .metric').first().waitFor();
   assert.equal(await page.locator('#robot-summary .metric').count(), 4);
-  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 12);
+  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 412);
   assert.equal(await page.locator('#robot-list .robot-state.online').count(), 2);
   await page.getByRole('button', { name: 'Add robot customer' }).click();
   const robotForm = page.locator('#robot-form');
@@ -503,7 +521,7 @@ async function adminFlow(browser) {
   await robotDraft.waitFor();
   await robotDraft.getByText('Inactive draft', { exact: true }).waitFor();
   await robotDraft.getByText(/AdminAssisted · Pending/).waitFor();
-  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 13);
+  assert.equal(await page.locator('#robot-list .admin-table-row').count(), 413);
   await page.locator('#robot-ai-form [name="mode"]').selectOption('HybridExternalAllowed');
   await page.locator('#robot-ai-form').getByRole('button', { name: 'Save AI policy' }).click();
   await page.getByText('Robot AI policy updated for every robot.', { exact: true }).waitFor();

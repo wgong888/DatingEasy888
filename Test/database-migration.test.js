@@ -45,14 +45,21 @@ test('existing prototype data is upgraded with robot inventory and AI policies',
   db = openDatabase(databasePath);
   assert.equal(
     db.prepare('SELECT COUNT(*) AS value FROM CustomerProfile WHERE Seed = 2').get().value,
-    12
+    412
   );
   assert.equal(
     db.prepare(`
       SELECT COUNT(*) AS value FROM CustomerProfile
-      WHERE Seed = 2 AND StateId = 'CA' AND CityName = 'Los Angeles'
+      WHERE EmailNormalized LIKE 'platform-robot-%@virtual.datingeasy.test'
     `).get().value,
-    12
+    400
+  );
+  assert.equal(
+    db.prepare(`
+      SELECT COUNT(*) AS value FROM CustomerProfile
+      WHERE EmailNormalized LIKE 'platform-seed-%@seed.datingeasy.test'
+    `).get().value,
+    1000
   );
   assert.equal(
     db.prepare(`

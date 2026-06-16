@@ -76,7 +76,15 @@ test('scheduler maintains one man and one woman online with eight-hour limits', 
   `).all();
   assert.deepEqual(
     Object.fromEntries(inventory.map((item) => [item.Sex, item.value])),
-    { Man: 6, Woman: 6 }
+    { Man: 106, Woman: 306 }
+  );
+  assert.deepEqual(
+    Object.fromEntries(app.db.prepare(`
+      SELECT Sex, COUNT(*) AS value FROM CustomerProfile
+      WHERE EmailNormalized LIKE 'platform-robot-%@virtual.datingeasy.test'
+      GROUP BY Sex
+    `).all().map((item) => [item.Sex, item.value])),
+    { Man: 100, Woman: 300 }
   );
 
   const active = activeRobots();
@@ -136,7 +144,7 @@ test('admin controls global AI mode, budgets, usage, and future shift regenerati
     headers: { Cookie: admin.cookie }
   });
   assert.equal(operations.response.status, 200);
-  assert.equal(operations.payload.data.robots.length, 12);
+  assert.equal(operations.payload.data.robots.length, 412);
   assert.equal(operations.payload.data.robots.filter((item) => item.online).length, 2);
   assert.equal(operations.payload.data.ai.mode, 'LocalOnly');
 
@@ -286,6 +294,12 @@ test('full-profile robot creation rejects missing profile details', async () => 
 
 test('hybrid mode records simulated outside AI usage and local mode does not', async () => {
   const robot = activeRobots()[0];
+  const admin = await login('admin@datingeasy.test');
+  await request('/api/v1/admin/robot-ai-policy', {
+    method: 'PUT',
+    headers: { Cookie: admin.cookie },
+    body: { mode: 'HybridExternalAllowed', dailyBudget: 10, monthlyBudget: 100 }
+  });
   const registered = await request('/api/v1/auth/customer/register', {
     method: 'POST',
     body: {
@@ -313,10 +327,17 @@ test('hybrid mode records simulated outside AI usage and local mode does not', a
       body: { text: 'Why do relationships sometimes feel confusing even when people care?' }
     }
   );
-  assert.equal(hybrid.payload.data.robotReply.responseSource, 'ExternalAISimulated');
+  assert.equal(hybrid.payload.data.robotReply, null);
+  app.processRobotReplies(new Date(), 10);
+  let latestRobotMessage = app.db.prepare(`
+    SELECT * FROM ChatRecords
+    WHERE ConversationId = ? AND SenderId = ?
+    ORDER BY ChatTime DESC
+    LIMIT 1
+  `).get(conversation.payload.data.conversationId, robot.RobotCustomerId);
+  assert.equal(latestRobotMessage.ResponseSource, 'ExternalAISimulated');
   assert.equal(app.db.prepare('SELECT COUNT(*) AS value FROM RobotAIUsage').get().value, 1);
 
-  const admin = await login('admin@datingeasy.test');
   await request('/api/v1/admin/robot-ai-policy', {
     method: 'PUT',
     headers: { Cookie: admin.cookie },
@@ -330,7 +351,15 @@ test('hybrid mode records simulated outside AI usage and local mode does not', a
       body: { text: 'Do you remember why relationships can feel confusing?' }
     }
   );
-  assert.equal(local.payload.data.robotReply.responseSource, 'RobotLocal');
+  assert.equal(local.payload.data.robotReply, null);
+  app.processRobotReplies(new Date(), 10);
+  latestRobotMessage = app.db.prepare(`
+    SELECT * FROM ChatRecords
+    WHERE ConversationId = ? AND SenderId = ?
+    ORDER BY ChatTime DESC
+    LIMIT 1
+  `).get(conversation.payload.data.conversationId, robot.RobotCustomerId);
+  assert.equal(latestRobotMessage.ResponseSource, 'RobotLocal');
   assert.equal(app.db.prepare('SELECT COUNT(*) AS value FROM RobotAIUsage').get().value, 1);
 });
 
@@ -364,6 +393,8 @@ test('one headless robot handles ten customers for thirteen accelerated chat rou
     });
   }
 
+  const conversationIds = customers.map((customer) => customer.conversationId);
+  const placeholders = conversationIds.map(() => '?').join(', ');
   for (let round = 0; round < 13; round += 1) {
     const sends = await Promise.all(customers.map((customer, index) => request(
       `/api/v1/customer/conversations/${customer.conversationId}/messages/text`,
@@ -383,11 +414,15 @@ test('one headless robot handles ten customers for thirteen accelerated chat rou
       }
     )));
     assert.ok(sends.every((result) => result.response.status === 201));
-    assert.ok(sends.every((result) => result.payload.data.robotReply?.responseSource === 'RobotLocal'));
+    assert.ok(sends.every((result) => result.payload.data.robotReply === null));
+    app.processRobotReplies(new Date(), 20);
+    const robotReplies = app.db.prepare(`
+      SELECT COUNT(*) AS value FROM ChatRecords
+      WHERE ConversationId IN (${placeholders}) AND SenderId = ?
+    `).get(...conversationIds, robot.RobotCustomerId).value;
+    assert.equal(robotReplies, (round + 1) * 10);
   }
 
-  const conversationIds = customers.map((customer) => customer.conversationId);
-  const placeholders = conversationIds.map(() => '?').join(', ');
   const messages = app.db.prepare(`
     SELECT * FROM ChatRecords WHERE ConversationId IN (${placeholders})
   `).all(...conversationIds);

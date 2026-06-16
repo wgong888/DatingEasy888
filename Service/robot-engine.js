@@ -460,9 +460,15 @@ function findMemoryMarker(history) {
   return markers.find(([needle]) => text.includes(needle))?.[1] || null;
 }
 
-function localResponse(text, history) {
+function firstName(customerInfo) {
+  return String(customerInfo?.displayName || '').trim().split(/\s+/u)[0] || '';
+}
+
+function localResponse(text, history, customerInfo = null) {
   const value = String(text).toLowerCase();
   const memory = findMemoryMarker(history);
+  const name = firstName(customerInfo);
+  const place = customerInfo?.city ? ` in ${customerInfo.city}` : '';
   if (/\b(remember|earlier|before|continue)\b/u.test(value) && memory) {
     return `I remember ${memory}. What feels most interesting about it now?`;
   }
@@ -485,6 +491,9 @@ function localResponse(text, history) {
     return 'Following a team can make an ordinary week more fun. What keeps you watching?';
   }
   if (memory) return `I remember ${memory}. Tell me what has changed since you mentioned it.`;
+  if (name || place) {
+    return `I am glad you shared that${name ? `, ${name}` : ''}. What part of life${place} would you like to talk about a little more?`;
+  }
   return 'I am glad you shared that. What part would you like to talk about a little more?';
 }
 
@@ -515,6 +524,7 @@ function generateRobotReply(db, options) {
     conversationId,
     incomingChatRecordId,
     text,
+    customerInfo = null,
     timestamp = new Date(),
     allowOffShift = false
   } = options;
@@ -529,7 +539,7 @@ function generateRobotReply(db, options) {
   const modePolicy = getPolicy(db, 'robot_ai_mode', 'LocalOnly');
   const externalCandidate = modePolicy.value === 'HybridExternalAllowed' &&
     /\b(why|feel|remember|earlier|relationship|confused|meaning|advice)\b/iu.test(text);
-  const replyText = localResponse(text, history);
+  const replyText = localResponse(text, history, customerInfo);
   const inputTokens = Math.min(
     2000,
     estimateTokens(JSON.stringify(history.map((item) => item.Text))) + estimateTokens(text) + 180

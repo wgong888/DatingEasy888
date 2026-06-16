@@ -14,7 +14,7 @@
     "demo": "npm run reset && npm start"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22 <27"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

@@ -15,8 +15,10 @@ Status: Ready for product-owner review
   operations
 - Administrator employee creation captures required profile details including
   sex, birth day, phone number, address, and education
-- Review database baseline now includes 200 real customers, 5 seed customers,
-  and 12 robot customers
+- Review database baseline now includes 200 real customers, 1,005 seed customers,
+  and 412 robot customers
+- Permanent platform baseline includes 50 US major cities with 300 female robots,
+  100 male robots, 750 female seed customers, and 250 male seed customers
 - CEO four-panel finance, presence, health, and outgoing-payment approval
 - Same-browser review across customer, employee, administrator, and CEO tabs
   without session overwrite
