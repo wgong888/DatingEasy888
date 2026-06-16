@@ -392,6 +392,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; border-top: 1px solid var(--line); padding: 12px; }
 .composer textarea { min-height: 48px; max-height: 120px; resize: vertical; padding: 12px; }
 .composer-meta { grid-column: 1 / -1; display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.composer-credit-warning {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #f0b9a5;
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: #7a2f1c;
+  background: #fff5f1;
+  font-size: 12px;
+  font-weight: 700;
+}
+.composer-credit-warning.hidden { display: none; }
+.composer-credit-warning .text-button { white-space: nowrap; color: var(--coral-dark); }
 
 .account-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 32px; }
 .account-summary { align-self: start; padding-right: 28px; border-right: 1px solid var(--line); }

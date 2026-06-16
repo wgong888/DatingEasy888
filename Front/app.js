@@ -21,6 +21,7 @@ const state = {
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const MESSAGE_CREDIT_COST = 5;
 
 const CONFIGURED_SERVICE_ORIGIN = localStorage.getItem('datingeasyServiceOrigin');
 const DEFAULT_LOCAL_SERVICE_ORIGIN = 'http://127.0.0.1:4173';
@@ -118,6 +119,7 @@ function setBalance(value) {
   state.me.creditBalance = value;
   $('#credit-balance').textContent = value.toLocaleString();
   $('#me-balance').textContent = value.toLocaleString();
+  updateComposerCreditState();
 }
 
 function photoStyle(profile) {
@@ -482,6 +484,15 @@ function renderChatMessages(messages) {
   `).join('');
 }
 
+function updateComposerCreditState(form = $('[data-composer]')) {
+  if (!form || !state.me) return;
+  const balance = Number(state.me.creditBalance || 0);
+  const balanceLabel = $('[data-composer-balance]', form);
+  const warning = $('[data-credit-warning]', form);
+  if (balanceLabel) balanceLabel.textContent = `Balance: ${balance.toLocaleString()}`;
+  if (warning) warning.classList.toggle('hidden', balance >= MESSAGE_CREDIT_COST);
+}
+
 async function openConversation(conversationId) {
   state.activeConversationId = conversationId;
   renderConversationList();
@@ -512,10 +523,15 @@ async function openConversation(conversationId) {
     <form class="composer" data-composer>
       <textarea name="text" maxlength="500" placeholder="Write up to 60 words" aria-label="Message" required></textarea>
       <button class="primary-button" type="submit" data-send-message>Send</button>
-      <div class="composer-meta"><span data-word-count>0 / 60 words</span><span>Balance: ${state.me.creditBalance}</span></div>
+      <div class="composer-meta"><span data-word-count>0 / 60 words</span><span data-composer-balance>Balance: ${state.me.creditBalance}</span></div>
+      <div class="composer-credit-warning ${state.me.creditBalance >= MESSAGE_CREDIT_COST ? 'hidden' : ''}" data-credit-warning>
+        <span>Not enough credits to send. Add credits to keep chatting.</span>
+        <button class="text-button" type="button" data-open-credits>Add credits</button>
+      </div>
     </form>
     ${renderGiftStrip()}
   `;
+  updateComposerCreditState($('[data-composer]', panel));
   requestAnimationFrame(() => {
     const messages = $('.chat-messages', panel);
     messages.scrollTop = messages.scrollHeight;
@@ -557,8 +573,15 @@ function clearActiveChatFollowups() {
 async function sendMessage(form) {
   const text = new FormData(form).get('text').trim();
   if (!text) return;
+  if (form.dataset.sending === 'true') return;
+  if (Number(state.me?.creditBalance || 0) < MESSAGE_CREDIT_COST) {
+    updateComposerCreditState(form);
+    showToast('Add credits to keep chatting.');
+    return;
+  }
   const conversationId = state.activeConversationId;
   const button = $('[data-send-message], button[type=submit]', form);
+  form.dataset.sending = 'true';
   if (button) button.disabled = true;
   try {
     const result = await api(
@@ -576,11 +599,14 @@ async function sendMessage(form) {
     scheduleActiveChatFollowups();
   } catch (error) {
     if (error.code === 'INSUFFICIENT_CREDITS') {
-      showToast('Message not sent. You need at least 5 credits.');
+      state.me.creditBalance = 0;
+      updateComposerCreditState(form);
+      showToast('Add credits to keep chatting.');
     } else {
       throw error;
     }
   } finally {
+    form.dataset.sending = 'false';
     if (button) button.disabled = false;
   }
 }

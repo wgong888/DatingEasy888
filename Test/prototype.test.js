@@ -686,6 +686,11 @@ test('off-line robot waits to answer until it is online', async () => {
   });
   const grace = discovery.payload.data.items.find((profile) => profile.displayName === 'Grace');
   assert.ok(grace);
+  const activeGraceShifts = app.db.prepare(`
+    SELECT RobotShiftScheduleId
+    FROM RobotShiftSchedule
+    WHERE RobotCustomerId = ? AND ShiftStatus = 'Active'
+  `).all(grace.customerId);
   app.db.prepare(`
     UPDATE RobotShiftSchedule
     SET ShiftStatus = 'Completed', ActualEndTime = ?, UpdateTime = ?
@@ -697,6 +702,10 @@ test('off-line robot waits to answer until it is online', async () => {
     headers: { Cookie: cookie }
   });
   assert.equal(conversation.response.status, 200);
+  const startingMessageCount = app.db.prepare(`
+    SELECT COUNT(*) AS value FROM ChatRecords
+    WHERE ConversationId = ?
+  `).get(conversation.payload.data.conversationId).value;
 
   const messages = [
     'Hi Grace, I want to keep chatting with you.',
@@ -718,7 +727,7 @@ test('off-line robot waits to answer until it is online', async () => {
     SELECT COUNT(*) AS value FROM ChatRecords
     WHERE ConversationId = ?
   `).get(conversation.payload.data.conversationId).value;
-  assert.equal(stored, 2);
+  assert.equal(stored, startingMessageCount + 2);
 
   const coverage = app.db.prepare(`
     SELECT * FROM RobotCityCoverage
@@ -753,7 +762,7 @@ test('off-line robot waits to answer until it is online', async () => {
     SELECT COUNT(*) AS value FROM ChatRecords
     WHERE ConversationId = ?
   `).get(conversation.payload.data.conversationId).value;
-  assert.equal(stored, 3);
+  assert.equal(stored, startingMessageCount + 3);
   const latest = app.db.prepare(`
     SELECT * FROM ChatRecords
     WHERE ConversationId = ?
@@ -767,6 +776,13 @@ test('off-line robot waits to answer until it is online', async () => {
     SET ShiftStatus = 'Completed', ActualEndTime = ?, UpdateTime = ?
     WHERE RobotShiftScheduleId = ?
   `).run(new Date().toISOString(), new Date().toISOString(), graceShiftId);
+  for (const shift of activeGraceShifts) {
+    app.db.prepare(`
+      UPDATE RobotShiftSchedule
+      SET ShiftStatus = 'Active', ActualEndTime = NULL, UpdateTime = ?
+      WHERE RobotShiftScheduleId = ?
+    `).run(new Date().toISOString(), shift.RobotShiftScheduleId);
+  }
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
 });
