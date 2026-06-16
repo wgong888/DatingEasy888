@@ -216,35 +216,14 @@ async function newCustomerProfileFlow(browser) {
     /default-woman\.svg$/
   );
   assert.equal(await page.locator('#app-view.profile-incomplete').count(), 1);
+  await page.locator('#view-me [data-open-credits]').click();
+  await page.locator('#credits-dialog[open]').waitFor();
+  await page.locator('#credits-dialog [data-close-dialog]').click();
+  await page.locator('#credits-dialog').waitFor({ state: 'hidden' });
 
   const profile = page.locator('#profile-edit-form');
   await profile.locator('[name="lookingFor"]').selectOption('Everyone');
   await profile.locator('[name="maritalStatus"]').selectOption('Single');
-  await profile.locator('[name="workField"]').selectOption('Education');
-  await profile.locator('[name="englishLevel"]').selectOption('Advanced');
-  await profile.locator('[name="languages"]').fill('English, Spanish');
-  for (const value of ['Honest', 'Kind', 'Curious']) {
-    await profile.locator(`[data-choice="traits"] input[value="${value}"]`).check();
-  }
-  for (const value of ['Traveling', 'Cooking', 'Reading']) {
-    await profile.locator(`[data-choice="interests"] input[value="${value}"]`).check();
-  }
-  for (const value of ['Comedy', 'Documentary']) {
-    await profile.locator(`[data-choice="movies"] input[value="${value}"]`).check();
-  }
-  for (const value of ['Jazz', 'Folk']) {
-    await profile.locator(`[data-choice="music"] input[value="${value}"]`).check();
-  }
-  for (const value of ['Finding a friend', 'A relationship']) {
-    await profile.locator(`[data-choice="goals"] input[value="${value}"]`).check();
-  }
-  await profile.locator('[name="preferredAgeMin"]').fill('30');
-  await profile.locator('[name="preferredAgeMax"]').fill('55');
-  await profile.locator('[name="personalityType"]').selectOption('Quiet thinker');
-  await profile.locator('[name="bio"]').fill('Teacher, reader, and weekend cook.');
-  await profile.locator('[name="story"]').fill(
-    'I enjoy thoughtful conversations, local adventures, and meeting kind people.'
-  );
   await profile.getByRole('button', { name: 'Complete profile' }).click();
   await page.locator('#app-view:not(.profile-incomplete)').waitFor();
   await page.getByRole('button', { name: 'Save profile' }).waitFor();
@@ -277,7 +256,7 @@ async function newCustomerProfileFlow(browser) {
   await page.getByRole('button', { name: 'Me', exact: true }).first().click();
   await page.locator('#view-me:not(.hidden)').waitFor();
   assert.equal(await profile.locator('[name="maritalStatus"]').inputValue(), 'Single');
-  assert.equal(await profile.locator('[name="preferredAgeMin"]').inputValue(), '30');
+  assert.equal(await profile.locator('[name="preferredAgeMin"]').inputValue(), '');
 
   await page.screenshot({
     path: path.join(OUTPUT, 'customer-profile-editor.png'),

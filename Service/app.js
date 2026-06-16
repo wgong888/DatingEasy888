@@ -517,6 +517,20 @@ function profileCompleteness(profile) {
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
 
+function basicProfileComplete(profile) {
+  return Boolean(
+    String(profile.displayName || '').trim().length >= 2 &&
+    ageFromBirthDate(profile.birthDate) >= 18 &&
+    ['Man', 'Woman', 'Nonbinary', 'NotSpecified'].includes(String(profile.sex || '').trim()) &&
+    String(profile.lookingFor || '').trim() &&
+    /^[A-Z]{2}$/u.test(String(profile.countryCode || '').trim().toUpperCase()) &&
+    String(profile.state || '').trim() &&
+    String(profile.city || '').trim() &&
+    String(profile.maritalStatus || '').trim() &&
+    validProfilePhoto(profile.profilePhoto)
+  );
+}
+
 function editableCustomerProfile(row) {
   return {
     customerId: row.CustomerId,
@@ -1638,14 +1652,15 @@ function createApplication(options = {}) {
         profilePhoto
       };
       const completeness = profileCompleteness(proposed);
+      const basicComplete = basicProfileComplete(proposed);
       const completing = body.completeProfile === true || Boolean(customer.ProfileCompleted);
-      if (completing && completeness < 100) {
-        fields.profile = ['Complete every required profile section before continuing.'];
+      if (completing && !basicComplete) {
+        fields.profile = ['Complete Basic information before continuing.'];
       }
       if (Object.keys(fields).length) {
         throw new ApiError(422, 'VALIDATION_FAILED', 'Please check the submitted fields.', fields);
       }
-      const completed = completing && completeness === 100 ? 1 : 0;
+      const completed = completing && basicComplete ? 1 : 0;
       const storedPublicPhotos = publicPhotos.length ? publicPhotos : [profilePhoto];
       db.prepare(`
         UPDATE CustomerProfile

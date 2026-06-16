@@ -1545,6 +1545,48 @@ test('new customer completes every profile section and can review it through Me'
   assert.equal(me.payload.data.story.includes('thoughtful conversations'), true);
 });
 
+test('new customer can finish profile with basic information only', async () => {
+  const registered = await request('/api/v1/auth/customer/register', {
+    method: 'POST',
+    body: {
+      email: 'basic-profile@example.test',
+      password: 'Password123!',
+      displayName: 'Basic Morgan',
+      birthDate: '1990-05-15',
+      sex: 'Woman',
+      countryCode: 'US',
+      state: 'CA',
+      city: 'Pasadena'
+    }
+  });
+  const completed = await request('/api/v1/customer/me', {
+    method: 'PATCH',
+    headers: { Cookie: registered.cookie },
+    body: {
+      displayName: 'Basic Morgan',
+      birthDate: '1990-05-15',
+      sex: 'Woman',
+      lookingFor: 'Everyone',
+      countryCode: 'US',
+      state: 'CA',
+      city: 'Pasadena',
+      maritalStatus: 'Single',
+      completeProfile: true
+    }
+  });
+  assert.equal(completed.response.status, 200);
+  assert.equal(completed.payload.data.profileCompleted, true);
+  assert.ok(completed.payload.data.profileCompleteness < 100);
+  assert.deepEqual(completed.payload.data.languages, []);
+  assert.equal(completed.payload.data.story, '');
+
+  const discover = await request('/api/v1/customer/discovery/profiles', {
+    headers: { Cookie: registered.cookie }
+  });
+  assert.equal(discover.response.status, 200);
+  assert.ok(discover.payload.data.items.length > 0);
+});
+
 test('logout ignores client balance data and only revokes the session', async () => {
   const cookie = await loginCustomer();
   const before = app.db

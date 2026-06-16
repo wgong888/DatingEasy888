@@ -248,17 +248,17 @@
             <section id="profile-required" class="profile-required hidden">
               <div>
                 <strong>Complete your profile</strong>
-                <span>Finish every required section before using Discover and Messages.</span>
+                <span>Finish Basic information before using Discover and Messages. Other sections are optional.</span>
               </div>
               <b id="profile-completeness">0%</b>
             </section>
             <form id="profile-edit-form" class="profile-edit-form">
-              <div class="subheading"><h2>Review or edit profile</h2><span>Required fields are marked *</span></div>
+              <div class="subheading"><h2>Review or edit profile</h2><span>Basic information fields are required. Other fields are optional.</span></div>
               <section class="profile-form-section">
                 <div class="subheading"><h3>Photos</h3><span>Converted to JPG or PNG, maximum 100 x 100</span></div>
                 <div class="photo-editor">
                   <img id="profile-photo-preview" alt="Current profile portrait">
-                  <label>Main public photo *
+                  <label>Main public photo
                     <input id="profile-photo-input" type="file" accept="image/*">
                   </label>
                   <label>Private photo
@@ -318,8 +318,8 @@
               <section class="profile-form-section">
                 <div class="subheading"><h3>Work and language</h3><span>About you</span></div>
                 <div class="field-pair">
-                  <label>Field of work *
-                    <select name="workField" required>
+                  <label>Field of work
+                    <select name="workField">
                       <option value="">Select</option>
                       <option>Business</option><option>Creative services</option>
                       <option>Education</option><option>Engineering</option>
@@ -327,20 +327,20 @@
                       <option>Technology</option><option>Other</option>
                     </select>
                   </label>
-                  <label>English level *
-                    <select name="englishLevel" required>
+                  <label>English level
+                    <select name="englishLevel">
                       <option value="">Select</option>
                       <option>Beginner</option><option>Intermediate</option>
                       <option>Advanced</option><option>Native</option>
                     </select>
                   </label>
                 </div>
-                <label>Languages *<input name="languages" placeholder="English, Mandarin" required></label>
+                <label>Languages<input name="languages" placeholder="English, Mandarin"></label>
               </section>
               <section class="profile-form-section">
                 <div class="subheading"><h3>About</h3><span>Choose what fits you</span></div>
                 <fieldset class="choice-group" data-choice="traits" data-max="3">
-                  <legend>Traits * <small>Select up to 3</small></legend>
+                  <legend>Traits <small>Select up to 3</small></legend>
                   <div class="choice-grid">
                     <label><input type="checkbox" value="Honest"><span>Honest</span></label>
                     <label><input type="checkbox" value="Cheerful"><span>Cheerful</span></label>
@@ -355,7 +355,7 @@
                   </div>
                 </fieldset>
                 <fieldset class="choice-group" data-choice="interests" data-max="5">
-                  <legend>Interests * <small>Select up to 5</small></legend>
+                  <legend>Interests <small>Select up to 5</small></legend>
                   <div class="choice-grid">
                     <label><input type="checkbox" value="Traveling"><span>Traveling</span></label>
                     <label><input type="checkbox" value="Cooking"><span>Cooking</span></label>
@@ -372,7 +372,7 @@
                   </div>
                 </fieldset>
                 <fieldset class="choice-group" data-choice="movies" data-max="3">
-                  <legend>Movies * <small>Select up to 3</small></legend>
+                  <legend>Movies <small>Select up to 3</small></legend>
                   <div class="choice-grid">
                     <label><input type="checkbox" value="Documentary"><span>Documentary</span></label>
                     <label><input type="checkbox" value="Animation"><span>Animation</span></label>
@@ -385,7 +385,7 @@
                   </div>
                 </fieldset>
                 <fieldset class="choice-group" data-choice="music" data-max="3">
-                  <legend>Music * <small>Select up to 3</small></legend>
+                  <legend>Music <small>Select up to 3</small></legend>
                   <div class="choice-grid">
                     <label><input type="checkbox" value="Rock"><span>Rock</span></label>
                     <label><input type="checkbox" value="Pop"><span>Pop</span></label>
@@ -401,7 +401,7 @@
               <section class="profile-form-section">
                 <div class="subheading"><h3>Looking for</h3><span>Your preferences</span></div>
                 <fieldset class="choice-group" data-choice="goals" data-max="3">
-                  <legend>Goals * <small>Select up to 3</small></legend>
+                  <legend>Goals <small>Select up to 3</small></legend>
                   <div class="choice-grid">
                     <label><input type="checkbox" value="Chatting"><span>Chatting</span></label>
                     <label><input type="checkbox" value="Finding a friend"><span>Finding a friend</span></label>
@@ -411,11 +411,11 @@
                   </div>
                 </fieldset>
                 <div class="field-pair">
-                  <label>Preferred age from *<input name="preferredAgeMin" type="number" min="18" max="120" required></label>
-                  <label>Preferred age to *<input name="preferredAgeMax" type="number" min="18" max="120" required></label>
+                  <label>Preferred age from<input name="preferredAgeMin" type="number" min="18" max="120"></label>
+                  <label>Preferred age to<input name="preferredAgeMax" type="number" min="18" max="120"></label>
                 </div>
-                <label>Personality *
-                  <select name="personalityType" required>
+                <label>Personality
+                  <select name="personalityType">
                     <option value="">Select</option>
                     <option>Career chaser</option><option>Easygoing</option>
                     <option>Family focused</option><option>Creative spirit</option>
@@ -426,7 +426,7 @@
               <section class="profile-form-section">
                 <div class="subheading"><h3>Your words</h3><span>Tell people about yourself</span></div>
                 <label>Short bio<textarea name="bio" rows="4" maxlength="4000"></textarea></label>
-                <label>Story *<textarea name="story" rows="7" maxlength="4000" required></textarea></label>
+                <label>Story<textarea name="story" rows="7" maxlength="4000"></textarea></label>
               </section>
               <button id="save-profile-button" class="primary-button" type="submit">Save profile</button>
             </form>

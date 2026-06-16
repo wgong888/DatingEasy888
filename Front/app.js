@@ -744,6 +744,10 @@ document.addEventListener('click', async (event) => {
   const target = event.target.closest('button, [data-open-credits]');
   if (!target) return;
   try {
+    if (target.matches('[data-open-credits]') || target.id === 'credits-button') {
+      event.preventDefault();
+      return await withButtonBusy(target, () => openCredits());
+    }
     if (target.dataset.authTab) return setAuthTab(target.dataset.authTab);
     if (target.dataset.view) return switchView(target.dataset.view);
     if (target.dataset.profile) {
@@ -769,9 +773,6 @@ document.addEventListener('click', async (event) => {
       return await withButtonBusy(target, () => sendGift(target.dataset.gift));
     }
     if (target.dataset.selectPackage) return selectCreditPackage(target.dataset.selectPackage);
-    if (target.matches('[data-open-credits]') || target.id === 'credits-button') {
-      return await withButtonBusy(target, () => openCredits());
-    }
     if (target.matches('[data-close-dialog]')) return target.closest('dialog').close();
     if (target.matches('[data-close-chat]')) {
       state.activeConversationId = null;
@@ -881,8 +882,8 @@ $('#profile-edit-form').addEventListener('submit', async (event) => {
       $$('[data-choice]', event.currentTarget).forEach((group) => {
         body[group.dataset.choice] = $$('input:checked', group).map((input) => input.value);
       });
-      body.preferredAgeMin = Number(body.preferredAgeMin);
-      body.preferredAgeMax = Number(body.preferredAgeMax);
+      body.preferredAgeMin = body.preferredAgeMin === '' ? null : Number(body.preferredAgeMin);
+      body.preferredAgeMax = body.preferredAgeMax === '' ? null : Number(body.preferredAgeMax);
       body.profilePhoto = state.pendingProfilePhoto || state.me.profilePhoto;
       body.publicPhotos = [body.profilePhoto];
       body.privatePhotos = state.pendingPrivatePhoto ? [state.pendingPrivatePhoto] : [];
