@@ -1986,7 +1986,6 @@ function createApplication(options = {}) {
         conversation.CustomerAId === session.PrincipalId
           ? conversation.CustomerBId
           : conversation.CustomerAId;
-      const receiver = getCustomer(db, receiverId);
       const timestamp = now();
       const chatRecordId = randomUUID();
       let response;
@@ -1994,6 +1993,14 @@ function createApplication(options = {}) {
 
       db.exec('BEGIN IMMEDIATE');
       try {
+        const activeReceiver = db.prepare(`
+          SELECT CustomerId, Seed, Active
+          FROM CustomerProfile
+          WHERE CustomerId = ?
+        `).get(receiverId);
+        if (!activeReceiver?.Active) {
+          throw new ApiError(409, 'CHAT_TARGET_INACTIVE', 'This customer is not active right now.');
+        }
         const debit = db.prepare(`
           UPDATE CustomerProfile
           SET CreditsRemain = CreditsRemain - ?
@@ -2038,9 +2045,9 @@ function createApplication(options = {}) {
           'Prototype five-credit text message'
         );
         let robotReply = null;
-        if (receiver.Seed === CUSTOMER_TYPE.ROBOT) {
+        if (activeReceiver.Seed === CUSTOMER_TYPE.ROBOT) {
           robotQueueRequest = {
-            robotId: receiver.CustomerId,
+            robotId: activeReceiver.CustomerId,
             realCustomerId: session.PrincipalId,
             conversationId: params.conversationId,
             incomingChatRecordId: chatRecordId,

@@ -449,6 +449,66 @@ test('real customer can chat with another real customer', async () => {
     .run();
 });
 
+test('customer text send rejects inactive targets without charge or chat record', async () => {
+  const cookie = await loginCustomer();
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+  const registered = await request('/api/v1/auth/customer/register', {
+    method: 'POST',
+    body: {
+      email: 'inactive-target@example.test',
+      password: 'Password123!',
+      displayName: 'Inactive Target',
+      birthDate: '1991-03-04',
+      sex: 'Woman',
+      countryCode: 'US',
+      state: 'CA',
+      city: 'Los Angeles'
+    }
+  });
+  assert.equal(registered.response.status, 201);
+  const conversation = await request(
+    `/api/v1/customer/conversations/with/${registered.payload.data.customerId}`,
+    {
+      method: 'POST',
+      headers: { Cookie: cookie }
+    }
+  );
+  assert.equal(conversation.response.status, 200);
+  app.db.prepare('UPDATE CustomerProfile SET Active = 0 WHERE CustomerId = ?')
+    .run(registered.payload.data.customerId);
+  const balanceBefore = app.db
+    .prepare("SELECT CreditsRemain FROM CustomerProfile WHERE Email = 'demo@datingeasy.test'")
+    .get().CreditsRemain;
+  const recordCountBefore = app.db.prepare(`
+    SELECT COUNT(*) AS value
+    FROM ChatRecords
+    WHERE ConversationId = ?
+  `).get(conversation.payload.data.conversationId).value;
+  const sent = await request(
+    `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+    {
+      method: 'POST',
+      headers: { Cookie: cookie, 'Idempotency-Key': 'inactive-target-chat' },
+      body: { text: 'This message should not be charged or delivered.' }
+    }
+  );
+  assert.equal(sent.response.status, 409);
+  assert.equal(sent.payload.error.code, 'CHAT_TARGET_INACTIVE');
+  const balanceAfter = app.db
+    .prepare("SELECT CreditsRemain FROM CustomerProfile WHERE Email = 'demo@datingeasy.test'")
+    .get().CreditsRemain;
+  const recordCountAfter = app.db.prepare(`
+    SELECT COUNT(*) AS value
+    FROM ChatRecords
+    WHERE ConversationId = ?
+  `).get(conversation.payload.data.conversationId).value;
+  assert.equal(balanceAfter, balanceBefore);
+  assert.equal(recordCountAfter, recordCountBefore);
+  app.db.prepare('UPDATE CustomerProfile SET Active = 1 WHERE CustomerId = ?')
+    .run(registered.payload.data.customerId);
+});
+
 test('real customer can chat with a robot customer that answers autonomously', async () => {
   const cookie = await loginCustomer();
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
@@ -472,6 +532,10 @@ test('real customer can chat with a robot customer that answers autonomously', a
   );
   assert.equal(sent.response.status, 201);
   assert.equal(sent.payload.data.robotReply, null);
+  const outgoing = app.db.prepare('SELECT * FROM ChatRecords WHERE ChatRecordId = ?')
+    .get(sent.payload.data.chatRecordId);
+  assert.equal(outgoing.ReceiverId, robot.customerId);
+  assert.equal(outgoing.Text, 'Work was stressful today and I would enjoy a calm conversation.');
   const immediate = app.processRobotReplies(new Date(), 10);
   assert.equal(immediate.sent, 0);
   assert.equal(app.robotQueueSnapshot().queueLength, 1);
