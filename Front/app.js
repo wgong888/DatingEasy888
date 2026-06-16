@@ -272,7 +272,7 @@ function discoverFilterParams() {
   const form = $('#discover-filter-form');
   const params = new URLSearchParams();
   if (!form) return params;
-  ['query', 'countryCode', 'state', 'city', 'minAge', 'maxAge', 'sex'].forEach((name) => {
+  ['query', 'countryCode', 'state', 'city', 'minAge', 'maxAge', 'sex', 'status'].forEach((name) => {
     const value = String(form.elements[name]?.value || '').trim();
     if (value) params.set(name, value);
   });

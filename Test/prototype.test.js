@@ -326,6 +326,18 @@ test('customer discovery filters by search, country, state, city, age, sex, and 
     profile.sex === 'Woman'
   )));
 
+  const losAngelesWomen = await request('/api/v1/customer/discovery/profiles?countryCode=US&state=CA&city=Los%20Angeles&sex=Woman', {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(losAngelesWomen.response.status, 200);
+  assert.ok(losAngelesWomen.payload.data.items.length > 0);
+  assert.ok(losAngelesWomen.payload.data.items.every((profile) => (
+    profile.countryCode === 'US' &&
+    profile.state === 'CA' &&
+    profile.city === 'Los Angeles' &&
+    profile.sex === 'Woman'
+  )));
+
   const age = await request('/api/v1/customer/discovery/profiles?minAge=41&maxAge=43', {
     headers: { Cookie: cookie }
   });
@@ -346,6 +358,46 @@ test('customer discovery filters by search, country, state, city, age, sex, and 
   });
   assert.equal(requestedMan.response.status, 200);
   assert.equal(requestedMan.payload.data.items.length, 0);
+
+  const statusTarget = app.db.prepare(`
+    SELECT CustomerId, DisplayName, Active
+    FROM CustomerProfile
+    WHERE CustomerId <> (
+      SELECT CustomerId FROM CustomerProfile WHERE EmailNormalized = 'demo@datingeasy.test'
+    )
+      AND Active = 1
+      AND Sex = 'Woman'
+      AND CountryCode = 'US'
+      AND StateId = 'CA'
+      AND CityName = 'Los Angeles'
+    LIMIT 1
+  `).get();
+  assert.ok(statusTarget);
+  try {
+    app.db.prepare(`
+      UPDATE CustomerProfile
+      SET Active = 0, DisplayName = 'Inactive Search Tester'
+      WHERE CustomerId = ?
+    `).run(statusTarget.CustomerId);
+    const activeOnly = await request('/api/v1/customer/discovery/profiles?query=Inactive%20Search%20Tester&countryCode=US&state=CA&city=Los%20Angeles&sex=Woman', {
+      headers: { Cookie: cookie }
+    });
+    assert.equal(activeOnly.response.status, 200);
+    assert.equal(activeOnly.payload.data.items.length, 0);
+
+    const allStatuses = await request('/api/v1/customer/discovery/profiles?query=Inactive%20Search%20Tester&countryCode=US&state=CA&city=Los%20Angeles&sex=Woman&status=all', {
+      headers: { Cookie: cookie }
+    });
+    assert.equal(allStatuses.response.status, 200);
+    assert.equal(allStatuses.payload.data.items.length, 1);
+    assert.equal(allStatuses.payload.data.items[0].displayName, 'Inactive Search Tester');
+  } finally {
+    app.db.prepare(`
+      UPDATE CustomerProfile
+      SET Active = ?, DisplayName = ?
+      WHERE CustomerId = ?
+    `).run(statusTarget.Active, statusTarget.DisplayName, statusTarget.CustomerId);
+  }
 });
 
 test('real customer can chat with another real customer', async () => {

@@ -256,7 +256,15 @@ async function newCustomerProfileFlow(browser) {
   await discoverForm.locator('[name="state"]').selectOption('CA');
   await discoverForm.locator('[name="city"] option[value="Los Angeles"]').waitFor({ state: 'attached' });
   await discoverForm.locator('[name="city"]').selectOption('Los Angeles');
-  await page.locator('#profile-grid .profile-card').first().waitFor();
+  await discoverForm.locator('[name="sex"]').selectOption('Woman');
+  assert.equal(await discoverForm.locator('[name="status"]').inputValue(), 'active');
+  await discoverForm.getByRole('button', { name: 'Search' }).click();
+  await page.waitForFunction(() => {
+    const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
+    return cards.length > 0 && cards.every((card) => (
+      card.querySelector('.profile-location')?.textContent.trim() === 'Los Angeles, CA'
+    ));
+  });
   assert.ok(await page.locator('#profile-grid .profile-card').count() <= 20);
   await page.getByRole('button', { name: 'Me', exact: true }).first().click();
   await page.locator('#view-me:not(.hidden)').waitFor();

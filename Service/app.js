@@ -1698,6 +1698,8 @@ function createApplication(options = {}) {
       const countryCode = String(searchParams.get('countryCode') || '').trim().toUpperCase();
       const stateFilter = String(searchParams.get('state') || '').trim();
       const city = String(searchParams.get('city') || '').trim();
+      const statusFilter = String(searchParams.get('status') || 'active').trim().toLowerCase();
+      const includeInactive = statusFilter === 'all';
       const requestedSex = parseSexFilter(searchParams.get('sex'));
       const orientationAllowed = orientationSexes(viewer.GenderLookingFor);
       const sexFilters = requestedSex
@@ -1712,7 +1714,6 @@ function createApplication(options = {}) {
         }, requestId));
       }
       const like = `%${query}%`;
-      const cityLike = `%${city}%`;
       const sexPlaceholders = sexFilters.map(() => '?').join(', ');
       const rows = db.prepare(`
         SELECT p.*,
@@ -1721,13 +1722,14 @@ function createApplication(options = {}) {
             WHERE f.CustomerId = ? AND f.TargetCustomerId = p.CustomerId
           ) AS Favorite
         FROM CustomerProfile p
-        WHERE p.Active = 1 AND p.CustomerId <> ?
+        WHERE (? = 1 OR p.Active = 1)
+          AND p.CustomerId <> ?
           AND p.Sex IN (${sexPlaceholders})
           AND CAST((julianday('now') - julianday(p.BirthDate)) / 365.2425 AS INTEGER)
             BETWEEN ? AND ?
           AND (? = '' OR p.CountryCode = ?)
           AND (? = '' OR p.StateId = ?)
-          AND (? = '' OR p.CityName LIKE ?)
+          AND (? = '' OR p.CityName = ?)
           AND (
             ? = ''
             OR p.DisplayName LIKE ?
@@ -1741,6 +1743,7 @@ function createApplication(options = {}) {
         LIMIT 20
       `).all(
         session.PrincipalId,
+        includeInactive ? 1 : 0,
         session.PrincipalId,
         ...sexFilters,
         minAge,
@@ -1750,7 +1753,7 @@ function createApplication(options = {}) {
         stateFilter,
         stateFilter,
         city,
-        cityLike,
+        city,
         query,
         like,
         like,
