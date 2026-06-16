@@ -296,6 +296,13 @@ async function loadProfiles() {
   renderProfileGrid($('#profile-grid'), state.profiles, 'No profiles match this search.');
 }
 
+async function runProfileSearch(button = null) {
+  clearTimeout(state.discoveryTimer);
+  await withButtonBusy(button, async () => {
+    await loadProfiles();
+  });
+}
+
 async function loadFavorites() {
   const data = await api('/api/v1/customer/favorites');
   state.favorites = data.items;
@@ -912,8 +919,12 @@ $('#discover-filter-form').addEventListener('input', () => {
 
 $('#discover-filter-form').addEventListener('submit', (event) => {
   event.preventDefault();
-  clearTimeout(state.discoveryTimer);
-  loadProfiles().catch((error) => showToast(error.message));
+  const button = event.submitter || $('[data-search-profiles]', event.currentTarget);
+  runProfileSearch(button).catch((error) => showToast(error.message));
+});
+
+$('[data-search-profiles]').addEventListener('click', (event) => {
+  runProfileSearch(event.currentTarget).catch((error) => showToast(error.message));
 });
 
 $('#discover-filter-form').addEventListener('change', (event) => {
