@@ -190,6 +190,17 @@ function renderTags(items) {
   return `<div class="profile-tags">${items.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>`;
 }
 
+function renderProfileTextSection(title, value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return `<h3>${escapeHtml(title)}</h3><p>${escapeHtml(text)}</p>`;
+}
+
+function renderProfileTagSection(title, items) {
+  if (!items?.length) return '';
+  return `<h3>${escapeHtml(title)}</h3>${renderTags(items)}`;
+}
+
 function formatTime(value) {
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
@@ -230,9 +241,10 @@ function showAuthentication() {
 function fillProfileEditor() {
   const form = $('#profile-edit-form');
   const fields = [
-    'displayName', 'birthDate', 'sex', 'lookingFor', 'countryCode', 'state',
-    'city', 'maritalStatus', 'workField', 'englishLevel', 'preferredAgeMin',
-    'preferredAgeMax', 'personalityType', 'bio', 'story'
+    'email', 'phone', 'displayName', 'birthDate', 'sex', 'lookingFor',
+    'countryCode', 'state', 'city', 'maritalStatus', 'workField',
+    'englishLevel', 'preferredAgeMin', 'preferredAgeMax', 'personalityType',
+    'bio', 'story'
   ];
   fields.forEach((name) => {
     if (form.elements[name]) form.elements[name].value = state.me[name] ?? '';
@@ -364,7 +376,8 @@ async function openProfile(customerId) {
         </div>
         <section class="profile-about">
           <h2>About ${escapeHtml(profile.displayName)}</h2>
-          <p>${escapeHtml(profile.story || profile.bio)}</p>
+          ${renderProfileTextSection('Short bio', profile.bio)}
+          ${renderProfileTextSection('Short story', profile.story)}
           <dl>
             <div><dt>Gender</dt><dd>${escapeHtml(profile.sex)}</dd></div>
             <div><dt>Looking for</dt><dd>${escapeHtml(profile.lookingFor || 'Conversation')}</dd></div>
@@ -373,10 +386,12 @@ async function openProfile(customerId) {
             <div><dt>English</dt><dd>${escapeHtml(profile.englishLevel || 'Not specified')}</dd></div>
             <div><dt>Personality</dt><dd>${escapeHtml(profile.personalityType || 'Not specified')}</dd></div>
           </dl>
-          ${profile.languages?.length ? `<h3>Languages</h3>${renderTags(profile.languages)}` : ''}
-          ${profile.traits?.length ? `<h3>Traits</h3>${renderTags(profile.traits)}` : ''}
-          ${profile.interests?.length ? `<h3>Interests</h3>${renderTags(profile.interests)}` : ''}
-          ${profile.goals?.length ? `<h3>Goals</h3>${renderTags(profile.goals)}` : ''}
+          ${renderProfileTagSection('Languages', profile.languages)}
+          ${renderProfileTagSection('Traits', profile.traits)}
+          ${renderProfileTagSection('Interests', profile.interests)}
+          ${renderProfileTagSection('Movie preferences', profile.movies)}
+          ${renderProfileTagSection('Music preferences', profile.music)}
+          ${renderProfileTagSection('Goals', profile.goals)}
         </section>
         <div class="profile-detail-actions">
           <button class="primary-button" type="button" data-message="${profile.customerId}">Chat with ${escapeHtml(profile.displayName)}</button>

@@ -53,6 +53,14 @@ async function customerFlow(browser, viewport, suffix) {
   });
   await page.locator('.profile-photo').first().click();
   await page.locator('#view-profile:not(.hidden)').waitFor();
+  const publicProfile = page.locator('#view-profile');
+  await publicProfile.getByRole('heading', { name: 'Short bio' }).waitFor();
+  await publicProfile.getByRole('heading', { name: 'Short story' }).waitFor();
+  await publicProfile.getByRole('heading', { name: 'Interests' }).waitFor();
+  await publicProfile.getByRole('heading', { name: 'Movie preferences' }).waitFor();
+  await publicProfile.getByRole('heading', { name: 'Music preferences' }).waitFor();
+  const publicProfileText = await publicProfile.innerText();
+  assert.doesNotMatch(publicProfileText, /@virtual\.datingeasy\.test|555-/iu);
   await page.screenshot({
     path: path.join(OUTPUT, `customer-profile-${suffix}.png`),
     fullPage: true
@@ -222,6 +230,8 @@ async function newCustomerProfileFlow(browser) {
   await page.locator('#credits-dialog').waitFor({ state: 'hidden' });
 
   const profile = page.locator('#profile-edit-form');
+  await profile.locator('[name="email"]').fill(`profile-updated-${suffix}@example.test`);
+  await profile.locator('[name="phone"]').fill('+1-626-555-0200');
   await profile.locator('[name="lookingFor"]').selectOption('Everyone');
   await profile.locator('[name="maritalStatus"]').selectOption('Single');
   await profile.getByRole('button', { name: 'Complete profile' }).click();
@@ -255,6 +265,8 @@ async function newCustomerProfileFlow(browser) {
   assert.ok(await page.locator('#profile-grid .profile-card').count() <= 20);
   await page.getByRole('button', { name: 'Me', exact: true }).first().click();
   await page.locator('#view-me:not(.hidden)').waitFor();
+  assert.equal(await profile.locator('[name="email"]').inputValue(), `profile-updated-${suffix}@example.test`);
+  assert.equal(await profile.locator('[name="phone"]').inputValue(), '+1-626-555-0200');
   assert.equal(await profile.locator('[name="maritalStatus"]').inputValue(), 'Single');
   assert.equal(await profile.locator('[name="preferredAgeMin"]').inputValue(), '');
 

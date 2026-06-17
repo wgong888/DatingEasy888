@@ -1570,6 +1570,8 @@ function createApplication(options = {}) {
       const customer = getCustomer(db, session.PrincipalId);
       const current = editableCustomerProfile(customer);
       const body = await readJson(req);
+      const email = String(body.email ?? current.email).trim().toLowerCase();
+      const phone = String(body.phone ?? current.phone).trim();
       const displayName = String(body.displayName ?? customer.DisplayName).trim();
       const birthDate = String(body.birthDate ?? current.birthDate);
       const sex = String(body.sex ?? current.sex).trim();
@@ -1605,6 +1607,12 @@ function createApplication(options = {}) {
       const publicPhotos = cleanStringArray(body.publicPhotos ?? current.publicPhotos, 3);
       const privatePhotos = cleanStringArray(body.privatePhotos ?? current.privatePhotos, 3);
       const fields = {};
+      if (!email.includes('@') || email.length > 254) {
+        fields.email = ['Enter a valid email address.'];
+      }
+      if (phone && (phone.length < 7 || phone.length > 50)) {
+        fields.phone = ['Enter a valid phone number.'];
+      }
       if (displayName.length < 2 || displayName.length > 100) {
         fields.displayName = ['Display name must contain 2 to 100 characters.'];
       }
@@ -1660,11 +1668,21 @@ function createApplication(options = {}) {
       if (Object.keys(fields).length) {
         throw new ApiError(422, 'VALIDATION_FAILED', 'Please check the submitted fields.', fields);
       }
+      if (
+        email !== customer.EmailNormalized &&
+        db.prepare(`
+          SELECT 1 FROM CustomerProfile
+          WHERE EmailNormalized = ? AND CustomerId <> ?
+        `).get(email, session.PrincipalId)
+      ) {
+        throw new ApiError(409, 'EMAIL_IN_USE', 'That email is already registered.');
+      }
       const completed = completing && basicComplete ? 1 : 0;
       const storedPublicPhotos = publicPhotos.length ? publicPhotos : [profilePhoto];
       db.prepare(`
         UPDATE CustomerProfile
-        SET DisplayName = ?, BirthDate = ?, Sex = ?, CountryCode = ?, StateId = ?,
+        SET Email = ?, EmailNormalized = ?, Phone = ?,
+            DisplayName = ?, BirthDate = ?, Sex = ?, CountryCode = ?, StateId = ?,
             CityName = ?, MaritalStatus = ?, WorkField = ?, EnglishLevel = ?,
             LanguagesJson = ?, TraitsJson = ?, InterestsJson = ?,
             MoviePreferencesJson = ?, MusicPreferencesJson = ?, GoalsJson = ?,
@@ -1674,6 +1692,9 @@ function createApplication(options = {}) {
             ProfileCompleteness = ?, UpdateTime = ?
         WHERE CustomerId = ?
       `).run(
+        email,
+        email,
+        phone || null,
         displayName,
         birthDate,
         sex,

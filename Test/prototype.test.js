@@ -283,6 +283,15 @@ test('customer discovery hides internal customer types', async () => {
     { headers: { Cookie: cookie } }
   );
   assertTypeHidden(profile.payload.data);
+  assert.equal('email' in profile.payload.data, false);
+  assert.equal('phone' in profile.payload.data, false);
+  assert.equal(typeof profile.payload.data.bio, 'string');
+  assert.equal(typeof profile.payload.data.story, 'string');
+  assert.ok(Array.isArray(profile.payload.data.traits));
+  assert.ok(Array.isArray(profile.payload.data.interests));
+  assert.ok(Array.isArray(profile.payload.data.movies));
+  assert.ok(Array.isArray(profile.payload.data.music));
+  assert.ok(Array.isArray(profile.payload.data.goals));
 
   const conversations = await request('/api/v1/customer/conversations', {
     headers: { Cookie: cookie }
@@ -1563,6 +1572,8 @@ test('new customer can finish profile with basic information only', async () => 
     method: 'PATCH',
     headers: { Cookie: registered.cookie },
     body: {
+      email: 'basic-profile-updated@example.test',
+      phone: '+1-626-555-0198',
       displayName: 'Basic Morgan',
       birthDate: '1990-05-15',
       sex: 'Woman',
@@ -1575,6 +1586,8 @@ test('new customer can finish profile with basic information only', async () => 
     }
   });
   assert.equal(completed.response.status, 200);
+  assert.equal(completed.payload.data.email, 'basic-profile-updated@example.test');
+  assert.equal(completed.payload.data.phone, '+1-626-555-0198');
   assert.equal(completed.payload.data.profileCompleted, true);
   assert.ok(completed.payload.data.profileCompleteness < 100);
   assert.deepEqual(completed.payload.data.languages, []);
