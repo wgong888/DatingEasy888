@@ -462,6 +462,8 @@ function generatedProfilePhoto(sex, index = 0, customerKind = 'seed') {
 function generatedSheetKind(value) {
   const photo = String(value || '');
   if (photo.startsWith('/assets/profiles/seed-robot-contact-sheet.png#')) return 'legacy';
+  if (photo.startsWith('/assets/profiles/contact-sheet.png#')) return 'legacy';
+  if (photo.startsWith('/assets/profiles/profile-contact-sheet.png#')) return 'legacy';
   if (photo.startsWith(`${SEED_PROFILE_SHEET}#`)) return 'seed';
   if (photo.startsWith(`${ROBOT_PROFILE_SHEET}#`)) return 'robot';
   return null;
