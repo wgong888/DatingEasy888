@@ -163,8 +163,17 @@ test('prototype database contains requested review data volume', () => {
     app.db.prepare(`
       SELECT COUNT(*) AS value
       FROM CustomerProfile
-      WHERE Seed IN (1, 2)
-        AND ProfilePhoto NOT LIKE '/assets/profiles/seed-robot-contact-sheet.png#%|800% 600%'
+      WHERE Seed = 1
+        AND ProfilePhoto NOT LIKE '/assets/profiles/seed-contact-sheet-v2.png#%|800% 600%'
+    `).get().value,
+    0
+  );
+  assert.equal(
+    app.db.prepare(`
+      SELECT COUNT(*) AS value
+      FROM CustomerProfile
+      WHERE Seed = 2
+        AND ProfilePhoto NOT LIKE '/assets/profiles/robot-contact-sheet-v2.png#%|800% 600%'
     `).get().value,
     0
   );

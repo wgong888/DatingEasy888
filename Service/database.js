@@ -199,7 +199,8 @@ const profiles = [
 
 const TARGET_REAL_CUSTOMERS = 200;
 const TARGET_ROBOT_CUSTOMERS = 200;
-const GENERATED_PROFILE_SHEET = '/assets/profiles/seed-robot-contact-sheet.png';
+const SEED_PROFILE_SHEET = '/assets/profiles/seed-contact-sheet-v2.png';
+const ROBOT_PROFILE_SHEET = '/assets/profiles/robot-contact-sheet-v2.png';
 const GENERATED_PROFILE_SHEET_COLUMNS = 8;
 const GENERATED_PROFILE_SHEET_ROWS = 6;
 const GENERATED_PROFILE_TILE_INDEXES = Object.freeze({
@@ -331,6 +332,7 @@ function openDatabase(databasePath = DEFAULT_DB_PATH) {
   ensureRobotPrototypeData(db);
   ensureRealCustomerVolume(db);
   ensureUniqueVirtualCustomerNames(db);
+  migrateGeneratedProfileSheets(db);
   return db;
 }
 
@@ -444,7 +446,7 @@ function profilePhotoIndex(value) {
   return hash;
 }
 
-function generatedProfilePhoto(sex, index = 0) {
+function generatedProfilePhoto(sex, index = 0, customerKind = 'seed') {
   const normalized = String(sex || '').toLowerCase();
   const candidates = GENERATED_PROFILE_TILE_INDEXES[normalized] || GENERATED_PROFILE_TILE_INDEXES.neutral;
   const tile = candidates[profilePhotoIndex(index) % candidates.length];
@@ -453,7 +455,43 @@ function generatedProfilePhoto(sex, index = 0) {
   const x = `${(column * 100) / (GENERATED_PROFILE_SHEET_COLUMNS - 1)}%`;
   const y = `${(row * 100) / (GENERATED_PROFILE_SHEET_ROWS - 1)}%`;
   const size = `${GENERATED_PROFILE_SHEET_COLUMNS * 100}% ${GENERATED_PROFILE_SHEET_ROWS * 100}%`;
-  return `${GENERATED_PROFILE_SHEET}#${x} ${y}|${size}`;
+  const sheet = customerKind === 'robot' ? ROBOT_PROFILE_SHEET : SEED_PROFILE_SHEET;
+  return `${sheet}#${x} ${y}|${size}`;
+}
+
+function generatedSheetKind(value) {
+  const photo = String(value || '');
+  if (photo.startsWith('/assets/profiles/seed-robot-contact-sheet.png#')) return 'legacy';
+  if (photo.startsWith(`${SEED_PROFILE_SHEET}#`)) return 'seed';
+  if (photo.startsWith(`${ROBOT_PROFILE_SHEET}#`)) return 'robot';
+  return null;
+}
+
+function migrateGeneratedProfileSheets(db) {
+  const rows = db.prepare(`
+    SELECT CustomerId, EmailNormalized, DisplayName, Sex, Seed, ProfilePhoto
+    FROM CustomerProfile
+    WHERE Seed IN (1, 2)
+  `).all();
+  const update = db.prepare(`
+    UPDATE CustomerProfile
+    SET ProfilePhoto = ?,
+        PublicPhotosJson = ?,
+        UpdateTime = ?
+    WHERE CustomerId = ?
+  `);
+  const timestamp = now();
+  for (const row of rows) {
+    const kind = Number(row.Seed) === 2 ? 'robot' : 'seed';
+    const currentKind = generatedSheetKind(row.ProfilePhoto);
+    if (!currentKind || currentKind === kind) continue;
+    const photo = generatedProfilePhoto(
+      row.Sex,
+      `${kind}:${row.EmailNormalized}:${row.DisplayName}`,
+      kind
+    );
+    update.run(photo, JSON.stringify([photo]), timestamp, row.CustomerId);
+  }
 }
 
 function naturalDisplayName(sex, index) {
@@ -594,6 +632,8 @@ function seedDatabase(db) {
   for (const profile of profiles) {
     const id = randomUUID();
     seedIds.push(id);
+    const profileKind = profile.seedType === 2 ? 'robot' : 'seed';
+    const profilePhoto = generatedProfilePhoto(profile.sex, seedIds.length, profileKind);
     insertCustomer.run(
       id,
       `${profile.name.toLowerCase()}@virtual.datingeasy.test`,
@@ -607,7 +647,7 @@ function seedDatabase(db) {
       profile.state,
       profile.city,
       profile.bio,
-      generatedProfilePhoto(profile.sex, seedIds.length),
+      profilePhoto,
       'Single',
       'Creative services',
       'Advanced',
@@ -621,7 +661,7 @@ function seedDatabase(db) {
       60,
       'Friendly and curious',
       profile.bio,
-      JSON.stringify([generatedProfilePhoto(profile.sex, seedIds.length)]),
+      JSON.stringify([profilePhoto]),
       created,
       created,
       profile.seedType,
@@ -910,7 +950,7 @@ function ensureRobotPrototypeData(db) {
       SELECT CustomerId FROM CustomerProfile WHERE EmailNormalized = ?
     `).get(email);
     if (!existing) {
-      const photo = generatedProfilePhoto(profile.sex, profiles.indexOf(profile));
+      const photo = generatedProfilePhoto(profile.sex, profiles.indexOf(profile), 'robot');
       const customerId = randomUUID();
       insertRobot.run(
         customerId,
@@ -1107,7 +1147,11 @@ function platformProfile({ state, city, sex, index, kind, nameSerial }) {
     lookingFor: female ? 'Men' : 'Women',
     bio: `I live near ${cityText} and enjoy warm conversation, local food, music, and easy weekend plans.`,
     story: `Around ${cityText}, I like simple places with good energy and people who can be thoughtful, kind, and clear.`,
-    profilePhoto: generatedProfilePhoto(sex, `${kind}:${state}:${city}:${sex}:${serial}:${profileIndex}`)
+    profilePhoto: generatedProfilePhoto(
+      sex,
+      `${kind}:${state}:${city}:${sex}:${serial}:${profileIndex}`,
+      kind === 'robot' ? 'robot' : 'seed'
+    )
   };
 }
 
@@ -1388,7 +1432,7 @@ function generatedRobotCustomer(index) {
     lookingFor: sex === 'Man' ? 'Women' : 'Men',
     bio: 'I enjoy music, simple food, local walks, and respectful conversation around Los Angeles.',
     story: `Around Los Angeles, I like relaxed plans, steady humor, and conversations that help two people understand each other a little better.`,
-    profilePhoto: generatedProfilePhoto(sex, `${name}:${sex}:${index}`)
+    profilePhoto: generatedProfilePhoto(sex, `${name}:${sex}:${index}`, 'robot')
   };
 }
 
@@ -1532,7 +1576,7 @@ function generatedRealCustomer(index) {
     preferredAgeMax: 62,
     personalityType: ['Easygoing', 'Family focused', 'Creative spirit', 'Quiet thinker'][index % 4],
     story: `I am here to meet adults who enjoy clear, respectful conversation. Around ${city}, I like simple weekends, local food, and learning what makes another person's life interesting.`,
-    profilePhoto: generatedProfilePhoto(sex, `${name}:${sex}:${state}:${city}:${index}`)
+    profilePhoto: generatedProfilePhoto(sex, `${name}:${sex}:${state}:${city}:${index}`, 'seed')
   };
 }
 

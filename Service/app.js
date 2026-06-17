@@ -29,7 +29,7 @@ const CUSTOMER_TYPE = Object.freeze({
   SEED: 1,
   ROBOT: 2
 });
-const GENERATED_PROFILE_SHEET = '/assets/profiles/seed-robot-contact-sheet.png';
+const ROBOT_PROFILE_SHEET = '/assets/profiles/robot-contact-sheet-v2.png';
 const GENERATED_PROFILE_SHEET_COLUMNS = 8;
 const GENERATED_PROFILE_SHEET_ROWS = 6;
 const GENERATED_PROFILE_TILE_INDEXES = Object.freeze({
@@ -432,7 +432,7 @@ function generatedProfilePhoto(sex, index = 0) {
   const x = `${(column * 100) / (GENERATED_PROFILE_SHEET_COLUMNS - 1)}%`;
   const y = `${(row * 100) / (GENERATED_PROFILE_SHEET_ROWS - 1)}%`;
   const size = `${GENERATED_PROFILE_SHEET_COLUMNS * 100}% ${GENERATED_PROFILE_SHEET_ROWS * 100}%`;
-  return `${GENERATED_PROFILE_SHEET}#${x} ${y}|${size}`;
+  return `${ROBOT_PROFILE_SHEET}#${x} ${y}|${size}`;
 }
 
 function birthDateForAge(age) {
