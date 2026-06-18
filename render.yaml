@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: arfa-prototype
+    name: datingeasy
     runtime: node
     plan: free
     buildCommand: npm ci --omit=dev

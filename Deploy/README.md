@@ -1,6 +1,6 @@
 # DatingEasy888 Arfa Deploy Folder
 
-This folder is the deployment handoff area for the Arfa prototype.
+This folder is the deployment handoff area for the DatingEasy Arfa prototype.
 
 ## Deploy Target
 
@@ -18,7 +18,7 @@ GitHub repository root.
 The deploy archive is generated in this folder as:
 
 ```text
-datingeasy888-arfa-0.4.0-deploy.tar.gz
+datingeasy-arfa-0.4.0-deploy.tar.gz
 ```
 
 The archive excludes local runtime files such as `node_modules`, SQLite build
@@ -34,4 +34,3 @@ Replace `<render-service-url>` with the Render service URL:
 - CEO: `https://<render-service-url>/ceo`
 
 Prototype test accounts are documented in `PROTOTYPE.md`.
-

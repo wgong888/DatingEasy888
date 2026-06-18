@@ -3,7 +3,7 @@
 Package:
 
 ```text
-Deploy/datingeasy888-arfa-0.4.0-deploy.tar.gz
+Deploy/datingeasy-arfa-0.4.0-deploy.tar.gz
 ```
 
 Included deployment files:
@@ -39,4 +39,3 @@ Verification commands:
 npm test
 npm run test:browser
 ```
-

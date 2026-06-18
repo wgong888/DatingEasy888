@@ -25,7 +25,7 @@ The repository root contains `render.yaml`:
 ```yaml
 services:
   - type: web
-    name: arfa-prototype
+    name: datingeasy
     runtime: node
     plan: free
     buildCommand: npm ci --omit=dev
@@ -48,7 +48,7 @@ This follows Render's Blueprint model for a Node web service. Render sets the
 4. Select the `DatingEasy888` repository.
 5. Confirm the root `render.yaml`.
 6. Apply the Blueprint.
-7. Wait for the `arfa-prototype` web service build and deploy to complete.
+7. Wait for the `datingeasy` web service build and deploy to complete.
 8. Open the service URL and verify:
 
 ```text
