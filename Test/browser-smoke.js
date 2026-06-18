@@ -510,10 +510,10 @@ async function adminFlow(browser) {
   await robotFilter.getByRole('button', { name: 'Search' }).click();
   await page.getByText('Robot inventory filtered.', { exact: true }).waitFor();
   const filteredRobotCount = await page.locator('#robot-list .admin-table-row').count();
-  assert.ok(filteredRobotCount > 0 && filteredRobotCount < 412);
+  assert.ok(filteredRobotCount > 0 && filteredRobotCount <= 2);
   assert.equal(
     await page.locator('#robot-list .admin-table-row').evaluateAll((rows) =>
-      rows.every((row) => row.innerText.includes('Los Angeles, CA'))
+      rows.every((row) => row.innerText.includes('Los Angeles, CA') && row.innerText.includes('Active'))
     ),
     true
   );
@@ -525,12 +525,15 @@ async function adminFlow(browser) {
   await page.getByText('Browser Edited Robot robot profile updated.', { exact: true }).waitFor();
   const editedRobotRow = page.locator('#robot-list .admin-table-row', { hasText: 'Browser Edited Robot' });
   await editedRobotRow.waitFor();
-  await editedRobotRow.getByRole('button', { name: 'Deactivate' }).click();
-  await page.getByText('Browser Edited Robot deactivated.', { exact: true }).waitFor();
   await robotFilter.locator('[name="active"]').selectOption('false');
   await robotFilter.getByRole('button', { name: 'Search' }).click();
-  await page.locator('#robot-list .admin-table-row', { hasText: 'Browser Edited Robot' }).getByRole('button', { name: 'Activate' }).click();
-  await page.getByText('Browser Edited Robot activated.', { exact: true }).waitFor();
+  await page.getByText('Robot inventory filtered.', { exact: true }).waitFor();
+  assert.equal(
+    await page.locator('#robot-list .admin-table-row').evaluateAll((rows) =>
+      rows.length > 0 && rows.every((row) => !row.querySelector('.robot-state.online'))
+    ),
+    true
+  );
   await robotFilter.locator('[name="countryCode"]').selectOption('');
   await robotFilter.locator('[name="active"]').selectOption('');
   await robotFilter.getByRole('button', { name: 'Search' }).click();

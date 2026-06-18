@@ -2128,12 +2128,19 @@ test('admin can filter, edit, activate, and deactivate robot customers', async (
     robot.countryCode === 'US' &&
     robot.state === 'CA' &&
     robot.city === 'Los Angeles' &&
-    robot.active === true
+    robot.active === true &&
+    robot.online === true
   )));
+  assert.ok(filtered.payload.data.robots.length <= 2);
 
   const robot = filtered.payload.data.robots[0];
   const originalName = robot.displayName;
   const editedName = `${originalName} Edited`;
+  const activeShiftIds = app.db.prepare(`
+    SELECT RobotShiftScheduleId
+    FROM RobotShiftSchedule
+    WHERE RobotCustomerId = ? AND ShiftStatus = 'Active'
+  `).all(robot.customerId).map((shift) => shift.RobotShiftScheduleId);
   const edited = await request(`/api/v1/admin/robot-customers/${robot.customerId}`, {
     method: 'PATCH',
     headers: { Cookie: adminLogin.cookie },
@@ -2159,12 +2166,20 @@ test('admin can filter, edit, activate, and deactivate robot customers', async (
     { headers: { Cookie: adminLogin.cookie } }
   );
   assert.ok(inactiveSearch.payload.data.robots.some((item) => item.customerId === robot.customerId));
+  assert.ok(inactiveSearch.payload.data.robots.every((item) => item.online === false));
 
   const restored = await request(`/api/v1/admin/robot-customers/${robot.customerId}`, {
     method: 'PATCH',
     headers: { Cookie: adminLogin.cookie },
     body: { displayName: originalName, active: true }
   });
+  for (const shiftId of activeShiftIds) {
+    app.db.prepare(`
+      UPDATE RobotShiftSchedule
+      SET ShiftStatus = 'Active', FailureCode = NULL, ActualEndTime = NULL, UpdateTime = ?
+      WHERE RobotShiftScheduleId = ?
+    `).run(new Date().toISOString(), shiftId);
+  }
   assert.equal(restored.payload.data.displayName, originalName);
   assert.equal(restored.payload.data.active, true);
 });

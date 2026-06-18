@@ -3615,11 +3615,12 @@ function createApplication(options = {}) {
         robotFilters.push('p.CityName = ?');
         robotFilterValues.push(cityFilter);
       }
-      if (['true', 'false'].includes(activeFilter)) {
-        robotFilters.push('p.Active = ?');
-        robotFilterValues.push(activeFilter === 'true' ? 1 : 0);
-      }
       const robotWhere = robotFilters.length ? `AND ${robotFilters.join(' AND ')}` : '';
+      const robotOnlineWhere = activeFilter === 'true'
+        ? 'AND p.Active = 1 AND s.RobotShiftScheduleId IS NOT NULL'
+        : activeFilter === 'false'
+          ? 'AND (p.Active <> 1 OR s.RobotShiftScheduleId IS NULL)'
+          : '';
       const robots = db.prepare(`
         SELECT p.CustomerId, p.DisplayName, p.BirthDate, p.Sex,
           p.GenderLookingFor, p.CountryCode, p.StateId, p.CityName,
@@ -3640,6 +3641,7 @@ function createApplication(options = {}) {
           AND s.PlannedStartTime <= ? AND s.PlannedEndTime > ?
         WHERE p.Seed = 2
           ${robotWhere}
+          ${robotOnlineWhere}
         ORDER BY p.Sex, p.DisplayName
       `).all(current, current, ...robotFilterValues);
       const shifts = db.prepare(`
