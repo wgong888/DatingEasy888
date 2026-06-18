@@ -2089,6 +2089,7 @@ function createApplication(options = {}) {
     ) {
       const session = authenticate(db, req, 'Customer');
       const conversation = getConversation(db, params.conversationId, session.PrincipalId);
+      processPendingRobotRepliesWithQueue(db, robotQueue, new Date(), 10);
       const otherId =
         conversation.CustomerAId === session.PrincipalId
           ? conversation.CustomerBId
