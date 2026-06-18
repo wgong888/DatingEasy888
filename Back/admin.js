@@ -420,6 +420,11 @@ async function loadRobots() {
   renderRobots(await api(`/api/v1/admin/robot-operations${params.toString() ? `?${params}` : ''}`));
 }
 
+async function filterRobots() {
+  await loadRobots();
+  setStatus('Robot inventory filtered.', 'success');
+}
+
 async function loadHealth() {
   const data = await api('/api/v1/admin/health');
   $('#health-checked').textContent = `Checked ${formatTime(data.checkedAt)}`;
@@ -661,8 +666,7 @@ $('#robot-filter-form').addEventListener('change', (event) => {
 $('#robot-filter-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
-    await loadRobots();
-    setStatus('Robot inventory filtered.', 'success');
+    await filterRobots();
   } catch (error) {
     setStatus(error.message, 'error');
   }
@@ -720,7 +724,7 @@ document.addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('click', async (event) => {
-  const target = event.target.closest('button, [data-admin-view], [data-edit-employee], [data-remove-employee], [data-edit-robot], [data-toggle-robot], [data-approve-reset], [data-reject-reset], [data-close-dialog]');
+  const target = event.target.closest('button, [data-admin-view], [data-edit-employee], [data-remove-employee], [data-edit-robot], [data-toggle-robot], [data-filter-robots], [data-approve-reset], [data-reject-reset], [data-close-dialog]');
   if (!target) return;
   try {
     if (target.dataset.adminView) return await switchView(target.dataset.adminView);
@@ -731,6 +735,7 @@ document.addEventListener('click', async (event) => {
     if (target.id === 'add-robot') return await openRobotDialog();
     if (target.id === 'refresh-health') return await loadHealth();
     if (target.id === 'refresh-robots') return await loadRobots();
+    if (target.dataset.filterRobots !== undefined) return await filterRobots();
     if (target.id === 'regenerate-robot-shifts') {
       const businessDate = $('#robot-shift-date').value;
       await api(

@@ -1000,7 +1000,8 @@ function insertRobotReply(db, {
   incomingChatRecordId,
   text,
   customerInfo = null,
-  timestamp = new Date()
+  timestamp = new Date(),
+  allowOffShift = false
 }) {
   const generated = generateRobotReply(db, {
     robot,
@@ -1009,7 +1010,8 @@ function insertRobotReply(db, {
     incomingChatRecordId,
     text,
     customerInfo,
-    timestamp
+    timestamp,
+    allowOffShift
   });
   if (!generated.reply) {
     audit(
@@ -1242,7 +1244,8 @@ function createRobotRequestQueue(db) {
             incomingChatRecordId: request.incomingChatRecordId,
             text: request.text,
             customerInfo: cachedCustomerInfo(request.realCustomerId),
-            timestamp: new Date()
+            timestamp: new Date(),
+            allowOffShift: true
           });
           if (result.robotReply) sent += 1;
           else deferred += 1;
@@ -1291,8 +1294,7 @@ function pendingRobotMessages(db, timestamp = new Date(), limit = 50) {
       latest.ChatRecordId AS IncomingChatRecordId,
       latest.ChatTime AS IncomingChatTime,
       latest.Text AS IncomingText
-    FROM RobotShiftSchedule s
-    JOIN CustomerProfile robot ON robot.CustomerId = s.RobotCustomerId
+    FROM CustomerProfile robot
     JOIN Conversations c
       ON c.CustomerAId = robot.CustomerId OR c.CustomerBId = robot.CustomerId
     JOIN CustomerProfile real
@@ -1307,16 +1309,15 @@ function pendingRobotMessages(db, timestamp = new Date(), limit = 50) {
         FROM ChatRecords m
         WHERE m.ConversationId = c.ConversationId
       )
-    WHERE s.ShiftStatus = 'Active'
-      AND s.PlannedStartTime <= ? AND s.PlannedEndTime > ?
-      AND robot.Seed = ?
+    WHERE robot.Seed = ?
       AND robot.Active = 1
       AND real.Seed = ?
       AND real.Active = 1
       AND latest.SenderId = real.CustomerId
+      AND latest.ChatTime <= ?
     ORDER BY latest.ChatTime
     LIMIT ?
-  `).all(current, current, CUSTOMER_TYPE.ROBOT, CUSTOMER_TYPE.REAL, limit);
+  `).all(CUSTOMER_TYPE.ROBOT, CUSTOMER_TYPE.REAL, current, limit);
 }
 
 function processPendingRobotReplies(db, timestamp = new Date(), limit = 50) {
