@@ -762,12 +762,22 @@ function estimatedUsage(db, prefix) {
   `).get(prefix.length, prefix).value || 0);
 }
 
-function activeConversationCount(db, robotId, timestamp = new Date()) {
+function pendingRobotConversationCount(db, robotId, timestamp = new Date()) {
   const cutoff = new Date(timestamp.getTime() - 20 * 60 * 1000).toISOString();
   return db.prepare(`
-    SELECT COUNT(*) AS value FROM Conversations
-    WHERE (CustomerAId = ? OR CustomerBId = ?) AND UpdatedAt >= ?
-  `).get(robotId, robotId, cutoff).value;
+    SELECT COUNT(*) AS value
+    FROM Conversations c
+    JOIN ChatRecords latest
+      ON latest.ConversationId = c.ConversationId
+      AND latest.ChatTime = (
+        SELECT MAX(m.ChatTime)
+        FROM ChatRecords m
+        WHERE m.ConversationId = c.ConversationId
+      )
+    WHERE (c.CustomerAId = ? OR c.CustomerBId = ?)
+      AND c.UpdatedAt >= ?
+      AND latest.SenderId <> ?
+  `).get(robotId, robotId, cutoff, robotId).value;
 }
 
 function generateRobotReply(db, options) {
@@ -785,7 +795,7 @@ function generateRobotReply(db, options) {
   if (!runtime.eligible && !allowOffShift) {
     return { reply: null, reason: 'ROBOT_NOT_ON_SHIFT' };
   }
-  if (activeConversationCount(db, robot.CustomerId, timestamp) > ROBOT_MAX_CONVERSATIONS) {
+  if (pendingRobotConversationCount(db, robot.CustomerId, timestamp) > ROBOT_MAX_CONVERSATIONS) {
     return { reply: null, reason: 'ROBOT_CAPACITY_REACHED' };
   }
   const history = recentHistory(db, conversationId);

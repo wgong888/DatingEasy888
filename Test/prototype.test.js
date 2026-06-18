@@ -691,6 +691,57 @@ test('active robot profile without a current shift answers customer chat on dema
     .run();
 });
 
+test('every online active robot answers customer chat', async () => {
+  const adminCookie = await loginStaff('admin@datingeasy.test');
+  const onlineRobots = await request('/api/v1/admin/robot-operations?active=true', {
+    headers: { Cookie: adminCookie }
+  });
+  assert.equal(onlineRobots.response.status, 200);
+  assert.ok(onlineRobots.payload.data.robots.length > 0);
+  assert.ok(onlineRobots.payload.data.robots.every((robot) => robot.active && robot.online));
+
+  const cookie = await loginCustomer();
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 500 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+  const sentChats = [];
+  for (const robot of onlineRobots.payload.data.robots) {
+    const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
+      method: 'POST',
+      headers: { Cookie: cookie }
+    });
+    assert.equal(conversation.response.status, 200);
+    const sent = await request(
+      `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Idempotency-Key': `online-robot-response-${robot.customerId}` },
+        body: { text: `Hello ${robot.displayName}, how is your day going?` }
+      }
+    );
+    assert.equal(sent.response.status, 201);
+    sentChats.push({
+      robotId: robot.customerId,
+      conversationId: conversation.payload.data.conversationId,
+      sentAt: sent.payload.data.chatTime
+    });
+  }
+
+  const processed = app.processRobotReplies(robotReplyReadyTime(), 20);
+  assert.equal(processed.sent, sentChats.length);
+  for (const chat of sentChats) {
+    const reply = app.db.prepare(`
+      SELECT * FROM ChatRecords
+      WHERE ConversationId = ? AND SenderId = ? AND ChatTime > ?
+      ORDER BY ChatTime DESC
+      LIMIT 1
+    `).get(chat.conversationId, chat.robotId, chat.sentAt);
+    assert.ok(reply);
+    assert.equal(reply.ResponseSource, 'RobotLocal');
+  }
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+});
+
 test('robot local replies vary by customer topic and recent history', async () => {
   const cookie = await loginCustomer();
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
