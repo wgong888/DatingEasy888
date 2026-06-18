@@ -168,6 +168,47 @@ test('prototype database contains requested review data volume', () => {
     `).get().value,
     0
   );
+  const seedWomanTiles = new Set([
+    0, 2, 4, 6,
+    9, 11, 13, 15,
+    16, 18, 20, 22,
+    24, 26, 28, 30,
+    33, 35, 37, 39,
+    40, 42, 44, 46
+  ]);
+  const seedManTiles = new Set([
+    1, 3, 5, 7,
+    8, 10, 12, 14,
+    17, 19, 21, 23,
+    25, 27, 29, 31,
+    32, 34, 36, 38,
+    41, 43, 45, 47
+  ]);
+  const robotWomanTiles = new Set([
+    2, 4, 6,
+    9, 11, 13, 15,
+    16, 18, 20, 22,
+    31, 34
+  ]);
+  const robotManTiles = new Set(Array.from({ length: 48 }, (_, tile) => tile).filter((tile) => {
+    const row = Math.floor(tile / 8);
+    const column = tile % 8;
+    return (row + column) % 2 === 1;
+  }));
+  const generatedVirtualPhotos = app.db.prepare(`
+    SELECT Sex, Seed, ProfilePhoto FROM CustomerProfile WHERE Seed IN (1, 2)
+  `).all();
+  for (const row of generatedVirtualPhotos) {
+    const match = row.ProfilePhoto.match(/#([0-9.]+)% ([0-9.]+)%\|800% 600%$/u);
+    assert.ok(match);
+    const column = Math.round((Number(match[1]) * 7) / 100);
+    const tileRow = Math.round((Number(match[2]) * 5) / 100);
+    const tile = tileRow * 8 + column;
+    if (row.Seed === 1 && row.Sex === 'Woman') assert.ok(seedWomanTiles.has(tile));
+    if (row.Seed === 1 && row.Sex === 'Man') assert.ok(seedManTiles.has(tile));
+    if (row.Seed === 2 && row.Sex === 'Woman') assert.ok(robotWomanTiles.has(tile));
+    if (row.Seed === 2 && row.Sex === 'Man') assert.ok(robotManTiles.has(tile));
+  }
   assert.equal(
     app.db.prepare(`
       SELECT COUNT(*) AS value
@@ -319,6 +360,12 @@ test('customer discovery filters by search, country, state, city, age, sex, and 
   const washington = unitedStates.states.find((item) => item.code === 'WA');
   assert.ok(washington);
   assert.ok(washington.cities.includes('Seattle'));
+  const california = unitedStates.states.find((item) => item.code === 'CA');
+  assert.ok(california);
+  assert.ok(california.cities.length > 1000);
+  ['Acalanes Ridge', 'Los Angeles', 'San Francisco', 'San Diego', 'Sacramento', 'Long Beach'].forEach((city) => {
+    assert.ok(california.cities.includes(city));
+  });
 
   const search = await request('/api/v1/customer/discovery/profiles?query=coffee', {
     headers: { Cookie: cookie }
@@ -762,6 +809,11 @@ test('off-line robot waits to answer until it is online', async () => {
     SET ShiftStatus = 'Completed', ActualEndTime = ?, UpdateTime = ?
     WHERE RobotCustomerId = ? AND ShiftStatus = 'Active'
   `).run(new Date().toISOString(), new Date().toISOString(), grace.customerId);
+  const offlineProfile = await request(`/api/v1/customer/profiles/${grace.customerId}`, {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(offlineProfile.response.status, 200);
+  assert.equal(offlineProfile.payload.data.online, false);
 
   const conversation = await request(`/api/v1/customer/conversations/with/${grace.customerId}`, {
     method: 'POST',
@@ -821,6 +873,11 @@ test('off-line robot waits to answer until it is online', async () => {
     shiftStart.toISOString(),
     shiftStart.toISOString()
   );
+  const onlineProfile = await request(`/api/v1/customer/profiles/${grace.customerId}`, {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(onlineProfile.response.status, 200);
+  assert.equal(onlineProfile.payload.data.online, true);
 
   const processed = app.processRobotReplies(robotReplyReadyTime(), 10);
   assert.equal(processed.sent, 1);
@@ -2000,6 +2057,62 @@ test('admin creates, edits, and removes all supported employee roles', async () 
     app.db.prepare('SELECT Active FROM Employees WHERE EmployeeId = ?')
       .get(created.employeeId).Active === 0
   )));
+});
+
+test('admin can filter, edit, activate, and deactivate robot customers', async () => {
+  const adminLogin = await request('/api/v1/auth/staff/login', {
+    method: 'POST',
+    body: { email: 'admin@datingeasy.test', password: 'Demo123!' }
+  });
+  const filtered = await request(
+    '/api/v1/admin/robot-operations?countryCode=US&state=CA&city=Los%20Angeles&active=true',
+    { headers: { Cookie: adminLogin.cookie } }
+  );
+  assert.equal(filtered.response.status, 200);
+  assert.ok(filtered.payload.data.robots.length > 0);
+  assert.ok(filtered.payload.data.robots.every((robot) => (
+    robot.countryCode === 'US' &&
+    robot.state === 'CA' &&
+    robot.city === 'Los Angeles' &&
+    robot.active === true
+  )));
+
+  const robot = filtered.payload.data.robots[0];
+  const originalName = robot.displayName;
+  const editedName = `${originalName} Edited`;
+  const edited = await request(`/api/v1/admin/robot-customers/${robot.customerId}`, {
+    method: 'PATCH',
+    headers: { Cookie: adminLogin.cookie },
+    body: { displayName: editedName, active: true }
+  });
+  assert.equal(edited.response.status, 200);
+  assert.equal(edited.payload.data.displayName, editedName);
+  assert.equal(
+    app.db.prepare('SELECT DisplayName FROM CustomerProfile WHERE CustomerId = ?')
+      .get(robot.customerId).DisplayName,
+    editedName
+  );
+
+  const deactivated = await request(`/api/v1/admin/robot-customers/${robot.customerId}`, {
+    method: 'PATCH',
+    headers: { Cookie: adminLogin.cookie },
+    body: { active: false }
+  });
+  assert.equal(deactivated.response.status, 200);
+  assert.equal(deactivated.payload.data.active, false);
+  const inactiveSearch = await request(
+    '/api/v1/admin/robot-operations?countryCode=US&state=CA&city=Los%20Angeles&active=false',
+    { headers: { Cookie: adminLogin.cookie } }
+  );
+  assert.ok(inactiveSearch.payload.data.robots.some((item) => item.customerId === robot.customerId));
+
+  const restored = await request(`/api/v1/admin/robot-customers/${robot.customerId}`, {
+    method: 'PATCH',
+    headers: { Cookie: adminLogin.cookie },
+    body: { displayName: originalName, active: true }
+  });
+  assert.equal(restored.payload.data.displayName, originalName);
+  assert.equal(restored.payload.data.active, true);
 });
 
 test('admin can add, edit, disable, and enable policies and inspect system health', async () => {

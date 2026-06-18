@@ -246,6 +246,9 @@ async function newCustomerProfileFlow(browser) {
   await discoverForm.locator('[name="countryCode"]').selectOption('US');
   await discoverForm.locator('[name="state"] option[value="CA"]').waitFor({ state: 'attached' });
   await discoverForm.locator('[name="state"]').selectOption('CA');
+  await discoverForm.locator('[name="city"] option[value="San Francisco"]').waitFor({ state: 'attached' });
+  await discoverForm.locator('[name="city"] option[value="San Diego"]').waitFor({ state: 'attached' });
+  await discoverForm.locator('[name="city"] option[value="Acalanes Ridge"]').waitFor({ state: 'attached' });
   await discoverForm.getByRole('button', { name: 'Search' }).click();
   await page.waitForFunction(() => {
     const cards = [...document.querySelectorAll('#profile-grid .profile-card')];
@@ -499,6 +502,40 @@ async function adminFlow(browser) {
   assert.equal(await page.locator('#robot-summary .metric').count(), 4);
   assert.equal(await page.locator('#robot-list .admin-table-row').count(), 412);
   assert.equal(await page.locator('#robot-list .robot-state.online').count(), 2);
+  const robotFilter = page.locator('#robot-filter-form');
+  await robotFilter.locator('[name="countryCode"]').selectOption('US');
+  await robotFilter.locator('[name="state"]').selectOption('CA');
+  await robotFilter.locator('[name="city"]').selectOption('Los Angeles');
+  await robotFilter.locator('[name="active"]').selectOption('true');
+  await robotFilter.getByRole('button', { name: 'Search' }).click();
+  await page.getByText('Robot inventory filtered.', { exact: true }).waitFor();
+  const filteredRobotCount = await page.locator('#robot-list .admin-table-row').count();
+  assert.ok(filteredRobotCount > 0 && filteredRobotCount < 412);
+  assert.equal(
+    await page.locator('#robot-list .admin-table-row').evaluateAll((rows) =>
+      rows.every((row) => row.innerText.includes('Los Angeles, CA'))
+    ),
+    true
+  );
+  const firstFilteredRobot = page.locator('#robot-list .admin-table-row').first();
+  await firstFilteredRobot.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('heading', { name: 'Edit robot customer' }).waitFor();
+  await page.locator('#robot-form [name="displayName"]').fill('Browser Edited Robot');
+  await page.locator('#robot-form').getByRole('button', { name: 'Save robot profile' }).click();
+  await page.getByText('Browser Edited Robot robot profile updated.', { exact: true }).waitFor();
+  const editedRobotRow = page.locator('#robot-list .admin-table-row', { hasText: 'Browser Edited Robot' });
+  await editedRobotRow.waitFor();
+  await editedRobotRow.getByRole('button', { name: 'Deactivate' }).click();
+  await page.getByText('Browser Edited Robot deactivated.', { exact: true }).waitFor();
+  await robotFilter.locator('[name="active"]').selectOption('false');
+  await robotFilter.getByRole('button', { name: 'Search' }).click();
+  await page.locator('#robot-list .admin-table-row', { hasText: 'Browser Edited Robot' }).getByRole('button', { name: 'Activate' }).click();
+  await page.getByText('Browser Edited Robot activated.', { exact: true }).waitFor();
+  await robotFilter.locator('[name="countryCode"]').selectOption('');
+  await robotFilter.locator('[name="active"]').selectOption('');
+  await robotFilter.getByRole('button', { name: 'Search' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('#robot-list .admin-table-row').length === 412);
+
   await page.getByRole('button', { name: 'Add robot customer' }).click();
   const robotForm = page.locator('#robot-form');
   await robotForm.locator('[name="creationMode"]').selectOption('FullProfile');

@@ -198,6 +198,16 @@ input { min-height: 44px; }
 .payment-status.denied { color: #9e3f36; border-color: #d8b4b0; background: #fff2f0; }
 .robot-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .robot-operations-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr); gap: 14px; }
+.robot-filter-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px;
+}
+.robot-filter-form label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; font-weight: 850; }
+.robot-filter-form select { width: 100%; min-height: 34px; padding: 5px 8px; font-size: 10px; }
+.robot-filter-form button { align-self: end; }
 .robot-ai-form { display: grid; gap: 12px; padding: 14px; }
 .robot-ai-form .payment-field-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .robot-ai-form input, .robot-ai-form select { width: 100%; min-width: 0; }

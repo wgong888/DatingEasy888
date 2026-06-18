@@ -2,7 +2,7 @@
 
 Status: Arfa local verification is green and `render.yaml` is committed.
 
-## Current GitHub Checkpoint
+## GitHub Checkpoint
 
 Repository:
 
@@ -16,11 +16,7 @@ Branch:
 main
 ```
 
-Commit:
-
-```text
-6b5dfed Stabilize Arfa for Render test deployment
-```
+Use the latest pushed commit on `main` for the current deploy snapshot.
 
 ## Render Blueprint
 

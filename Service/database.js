@@ -203,10 +203,40 @@ const SEED_PROFILE_SHEET = '/assets/profiles/seed-contact-sheet-v2.png';
 const ROBOT_PROFILE_SHEET = '/assets/profiles/robot-contact-sheet-v2.png';
 const GENERATED_PROFILE_SHEET_COLUMNS = 8;
 const GENERATED_PROFILE_SHEET_ROWS = 6;
+const GENERATED_PROFILE_TILE_COUNT = GENERATED_PROFILE_SHEET_COLUMNS * GENERATED_PROFILE_SHEET_ROWS;
+const SEED_PROFILE_TILE_INDEXES = Object.freeze({
+  woman: [
+    0, 2, 4, 6,
+    9, 11, 13, 15,
+    16, 18, 20, 22,
+    24, 26, 28, 30,
+    33, 35, 37, 39,
+    40, 42, 44, 46
+  ],
+  man: [
+    1, 3, 5, 7,
+    8, 10, 12, 14,
+    17, 19, 21, 23,
+    25, 27, 29, 31,
+    32, 34, 36, 38,
+    41, 43, 45, 47
+  ],
+  neutral: Array.from({ length: GENERATED_PROFILE_TILE_COUNT }, (_, index) => index)
+});
 const GENERATED_PROFILE_TILE_INDEXES = Object.freeze({
-  woman: Array.from({ length: 24 }, (_, index) => index * 2),
-  man: Array.from({ length: 24 }, (_, index) => index * 2 + 1),
-  neutral: Array.from({ length: GENERATED_PROFILE_SHEET_COLUMNS * GENERATED_PROFILE_SHEET_ROWS }, (_, index) => index)
+  woman: [
+    2, 4, 6,
+    9, 11, 13, 15,
+    16, 18, 20, 22,
+    31, 34
+  ],
+  man: Array.from({ length: GENERATED_PROFILE_TILE_COUNT }, (_, tile) => tile)
+    .filter((tile) => {
+      const row = Math.floor(tile / GENERATED_PROFILE_SHEET_COLUMNS);
+      const column = tile % GENERATED_PROFILE_SHEET_COLUMNS;
+      return (row + column) % 2 === 1;
+    }),
+  neutral: Array.from({ length: GENERATED_PROFILE_TILE_COUNT }, (_, index) => index)
 });
 
 const PLATFORM_US_MAJOR_CITIES = [
@@ -448,7 +478,10 @@ function profilePhotoIndex(value) {
 
 function generatedProfilePhoto(sex, index = 0, customerKind = 'seed') {
   const normalized = String(sex || '').toLowerCase();
-  const candidates = GENERATED_PROFILE_TILE_INDEXES[normalized] || GENERATED_PROFILE_TILE_INDEXES.neutral;
+  const tileIndexes = customerKind === 'robot'
+    ? GENERATED_PROFILE_TILE_INDEXES
+    : SEED_PROFILE_TILE_INDEXES;
+  const candidates = tileIndexes[normalized] || tileIndexes.neutral;
   const tile = candidates[profilePhotoIndex(index) % candidates.length];
   const column = tile % GENERATED_PROFILE_SHEET_COLUMNS;
   const row = Math.floor(tile / GENERATED_PROFILE_SHEET_COLUMNS);
@@ -486,12 +519,13 @@ function migrateGeneratedProfileSheets(db) {
   for (const row of rows) {
     const kind = Number(row.Seed) === 2 ? 'robot' : 'seed';
     const currentKind = generatedSheetKind(row.ProfilePhoto);
-    if (!currentKind || currentKind === kind) continue;
+    if (!currentKind) continue;
     const photo = generatedProfilePhoto(
       row.Sex,
       `${kind}:${row.EmailNormalized}:${row.DisplayName}`,
       kind
     );
+    if (row.ProfilePhoto === photo) continue;
     update.run(photo, JSON.stringify([photo]), timestamp, row.CustomerId);
   }
 }

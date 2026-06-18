@@ -32,10 +32,21 @@ const CUSTOMER_TYPE = Object.freeze({
 const ROBOT_PROFILE_SHEET = '/assets/profiles/robot-contact-sheet-v2.png';
 const GENERATED_PROFILE_SHEET_COLUMNS = 8;
 const GENERATED_PROFILE_SHEET_ROWS = 6;
+const GENERATED_PROFILE_TILE_COUNT = GENERATED_PROFILE_SHEET_COLUMNS * GENERATED_PROFILE_SHEET_ROWS;
 const GENERATED_PROFILE_TILE_INDEXES = Object.freeze({
-  woman: Array.from({ length: 24 }, (_, index) => index * 2),
-  man: Array.from({ length: 24 }, (_, index) => index * 2 + 1),
-  neutral: Array.from({ length: GENERATED_PROFILE_SHEET_COLUMNS * GENERATED_PROFILE_SHEET_ROWS }, (_, index) => index)
+  woman: [
+    2, 4, 6,
+    9, 11, 13, 15,
+    16, 18, 20, 22,
+    31, 34
+  ],
+  man: Array.from({ length: GENERATED_PROFILE_TILE_COUNT }, (_, tile) => tile)
+    .filter((tile) => {
+      const row = Math.floor(tile / GENERATED_PROFILE_SHEET_COLUMNS);
+      const column = tile % GENERATED_PROFILE_SHEET_COLUMNS;
+      return (row + column) % 2 === 1;
+    }),
+  neutral: Array.from({ length: GENERATED_PROFILE_TILE_COUNT }, (_, index) => index)
 });
 const CREDIT_PACKAGES = [
   { packageId: 1, amount: 10, credits: 100 },
@@ -116,6 +127,56 @@ const US_STATE_NAMES = Object.freeze({
   WI: 'Wisconsin',
   WY: 'Wyoming'
 });
+let configuredLocationsCache = null;
+let censusUsPlacesCache = null;
+
+function configuredStateCode(countryCode, state) {
+  const id = String(state.id || state.code || '').trim();
+  if (id.startsWith(`${countryCode}-`)) return id.slice(countryCode.length + 1);
+  return id || String(state.name || '').trim();
+}
+
+function configuredDiscoveryLocations() {
+  if (configuredLocationsCache) return configuredLocationsCache;
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(path.join(ROOT, 'Design', 'Data', 'countries_states_cities.json'), 'utf8')
+    );
+    configuredLocationsCache = (data.countries || []).map((country) => {
+      const code = String(country.code || '').trim().toUpperCase();
+      return {
+        code,
+        name: country.name || COUNTRY_NAMES[code] || code,
+        states: (country.states || []).map((state) => ({
+          code: configuredStateCode(code, state),
+          name: state.name || configuredStateCode(code, state),
+          cities: [...new Set((state.cities || []).map((city) => String(city).trim()).filter(Boolean))]
+        })).filter((state) => state.code && state.cities.length)
+      };
+    }).filter((country) => country.code && country.states.length);
+  } catch {
+    configuredLocationsCache = [];
+  }
+  return configuredLocationsCache;
+}
+
+function censusUsPlaces() {
+  if (censusUsPlacesCache) return censusUsPlacesCache;
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(path.join(ROOT, 'Design', 'Data', 'us_census_places_2024.json'), 'utf8')
+    );
+    censusUsPlacesCache = new Map(
+      (data.states || []).map((state) => [
+        String(state.code || '').trim(),
+        (state.cities || []).map((city) => String(city).trim()).filter(Boolean)
+      ]).filter(([code, cities]) => code && cities.length)
+    );
+  } catch {
+    censusUsPlacesCache = new Map();
+  }
+  return censusUsPlacesCache;
+}
 const PREPARED_REPLIES = [
   {
     preparedReplyId: 'acknowledge-detail',
@@ -567,6 +628,7 @@ function editableCustomerProfile(row) {
 
 function normalizeCustomer(row, favorite = false, options = {}) {
   const customerType = Number(row.Seed);
+  const hasOnlineStatus = Object.prototype.hasOwnProperty.call(row, 'Online');
   const customer = {
     customerId: row.CustomerId,
     displayName: row.DisplayName,
@@ -590,7 +652,7 @@ function normalizeCustomer(row, favorite = false, options = {}) {
     preferredAgeMax: row.PreferredAgeMax,
     personalityType: row.PersonalityType,
     story: row.Story,
-    online: customerType !== CUSTOMER_TYPE.REAL,
+    online: hasOnlineStatus ? Boolean(row.Online) : customerType !== CUSTOMER_TYPE.REAL,
     favorite: Boolean(favorite),
     photo: customerPhoto(row)
   };
@@ -608,6 +670,49 @@ function normalizeCustomer(row, favorite = false, options = {}) {
     });
   }
   return customer;
+}
+
+function customerOnlineStatus(db, row, timestamp = now()) {
+  if (!row?.Active) return false;
+  const customerType = Number(row.Seed);
+  if (customerType === CUSTOMER_TYPE.REAL) {
+    const cutoff = new Date(Date.parse(timestamp) - CUSTOMER_IDLE_MS).toISOString();
+    return Boolean(db.prepare(`
+      SELECT 1 FROM Sessions
+      WHERE PrincipalType = 'Customer'
+        AND PrincipalId = ?
+        AND ExpireTime > ?
+        AND LastActivityTime > ?
+      LIMIT 1
+    `).get(row.CustomerId, timestamp, cutoff));
+  }
+  if (customerType === CUSTOMER_TYPE.SEED) {
+    return Boolean(db.prepare(`
+      SELECT 1 FROM EmployeeSeed
+      WHERE CustomerId = ?
+        AND Active = 1
+        AND (ActiveEndTime IS NULL OR ActiveEndTime > ?)
+      LIMIT 1
+    `).get(row.CustomerId, timestamp));
+  }
+  if (customerType === CUSTOMER_TYPE.ROBOT) {
+    return Boolean(db.prepare(`
+      SELECT 1 FROM RobotShiftSchedule
+      WHERE RobotCustomerId = ?
+        AND ShiftStatus = 'Active'
+        AND PlannedStartTime <= ?
+        AND PlannedEndTime > ?
+      LIMIT 1
+    `).get(row.CustomerId, timestamp, timestamp));
+  }
+  return false;
+}
+
+function withCustomerOnlineStatus(db, row, timestamp = now()) {
+  return {
+    ...row,
+    Online: customerOnlineStatus(db, row, timestamp) ? 1 : 0
+  };
 }
 
 function matchPath(pathname, template) {
@@ -1743,27 +1848,48 @@ function createApplication(options = {}) {
         ORDER BY CountryCode, StateId, CityName
       `).all(session.PrincipalId);
       const countriesByCode = new Map();
-      for (const row of rows) {
-        if (!countriesByCode.has(row.CountryCode)) {
-          countriesByCode.set(row.CountryCode, {
-            code: row.CountryCode,
-            name: COUNTRY_NAMES[row.CountryCode] || row.CountryCode,
+      const ensureCountry = (code, name) => {
+        if (!countriesByCode.has(code)) {
+          countriesByCode.set(code, {
+            code,
+            name: name || COUNTRY_NAMES[code] || code,
             states: [],
             stateMap: new Map()
           });
         }
-        const country = countriesByCode.get(row.CountryCode);
-        if (!country.stateMap.has(row.StateId)) {
-          country.stateMap.set(row.StateId, {
-            code: row.StateId,
-            name: row.CountryCode === 'US'
-              ? US_STATE_NAMES[row.StateId] || row.StateId
-              : row.StateId,
-            cities: []
+        return countriesByCode.get(code);
+      };
+      const ensureState = (country, code, name) => {
+        if (!country.stateMap.has(code)) {
+          country.stateMap.set(code, {
+            code,
+            name: name || (country.code === 'US' ? US_STATE_NAMES[code] || code : code),
+            citySet: new Set()
           });
-          country.states.push(country.stateMap.get(row.StateId));
+          country.states.push(country.stateMap.get(code));
         }
-        country.stateMap.get(row.StateId).cities.push(row.CityName);
+        return country.stateMap.get(code);
+      };
+      for (const configuredCountry of configuredDiscoveryLocations()) {
+        const country = ensureCountry(configuredCountry.code, configuredCountry.name);
+        for (const configuredState of configuredCountry.states) {
+          const state = ensureState(country, configuredState.code, configuredState.name);
+          configuredState.cities.forEach((city) => state.citySet.add(city));
+        }
+      }
+      const usCountry = ensureCountry('US', COUNTRY_NAMES.US);
+      for (const [stateCode, cities] of censusUsPlaces()) {
+        const state = ensureState(usCountry, stateCode, US_STATE_NAMES[stateCode] || stateCode);
+        cities.forEach((city) => state.citySet.add(city));
+      }
+      for (const row of rows) {
+        const country = ensureCountry(row.CountryCode, COUNTRY_NAMES[row.CountryCode]);
+        const state = ensureState(
+          country,
+          row.StateId,
+          row.CountryCode === 'US' ? US_STATE_NAMES[row.StateId] || row.StateId : row.StateId
+        );
+        state.citySet.add(row.CityName);
       }
       const countries = [...countriesByCode.values()].map((country) => ({
         code: country.code,
@@ -1771,8 +1897,8 @@ function createApplication(options = {}) {
         states: country.states.map((item) => ({
           code: item.code,
           name: item.name,
-          cities: item.cities
-        }))
+          cities: [...item.citySet].sort((left, right) => left.localeCompare(right))
+        })).sort((left, right) => left.name.localeCompare(right.name))
       }));
       return json(res, 200, envelope({ countries }, requestId));
     }
@@ -1849,7 +1975,9 @@ function createApplication(options = {}) {
         like
       );
       return json(res, 200, envelope({
-        items: rows.map((row) => normalizeCustomer(row, row.Favorite)),
+        items: rows.map((row) => (
+          normalizeCustomer(withCustomerOnlineStatus(db, row), row.Favorite)
+        )),
         page: { limit: 20, nextCursor: null, hasMore: false }
       }, requestId));
     }
@@ -1864,7 +1992,7 @@ function createApplication(options = {}) {
         LIMIT 20
       `).all(session.PrincipalId);
       return json(res, 200, envelope({
-        items: rows.map((row) => normalizeCustomer(row, true)),
+        items: rows.map((row) => normalizeCustomer(withCustomerOnlineStatus(db, row), true)),
         page: { limit: 20, nextCursor: null, hasMore: false }
       }, requestId));
     }
@@ -1878,7 +2006,11 @@ function createApplication(options = {}) {
       const favorite = Boolean(db.prepare(`
         SELECT 1 FROM CustomerFavorites WHERE CustomerId = ? AND TargetCustomerId = ?
       `).get(session.PrincipalId, params.customerId));
-      return json(res, 200, envelope(normalizeCustomer(profile, favorite), requestId));
+      return json(
+        res,
+        200,
+        envelope(normalizeCustomer(withCustomerOnlineStatus(db, profile), favorite), requestId)
+      );
     }
 
     if (
@@ -1930,7 +2062,7 @@ function createApplication(options = {}) {
           conversationId: row.ConversationId,
           updatedAt: row.UpdatedAt,
           lastText: row.LastText,
-          otherCustomer: normalizeCustomer(other, favorite)
+          otherCustomer: normalizeCustomer(withCustomerOnlineStatus(db, other), favorite)
         };
       });
       return json(res, 200, envelope({
@@ -1971,7 +2103,10 @@ function createApplication(options = {}) {
       `).get(session.PrincipalId, otherId));
       return json(res, 200, envelope({
         conversationId: params.conversationId,
-        otherCustomer: normalizeCustomer(getCustomer(db, otherId), favorite),
+        otherCustomer: normalizeCustomer(
+          withCustomerOnlineStatus(db, getCustomer(db, otherId)),
+          favorite
+        ),
         messages: messages.map((message) => ({
           chatRecordId: message.ChatRecordId,
           chatTime: message.ChatTime,
@@ -2658,9 +2793,9 @@ function createApplication(options = {}) {
             updatedAt: conversation.UpdatedAt,
             status: waitingForEmployee ? 'Waiting for response' : 'Responded',
             waitingForEmployee,
-            seed: normalizeCustomer(seed, false, { includeType: true }),
+            seed: normalizeCustomer(withCustomerOnlineStatus(db, seed), false, { includeType: true }),
             realCustomer: normalizeCustomer(
-              getCustomer(db, conversation.RealCustomerId),
+              withCustomerOnlineStatus(db, getCustomer(db, conversation.RealCustomerId)),
               false,
               { includeType: true }
             ),
@@ -2689,7 +2824,7 @@ function createApplication(options = {}) {
           role: employee.Role
         },
         assignedSeeds: assigned.map((row) => ({
-          ...normalizeCustomer(row, false, { includeType: true }),
+          ...normalizeCustomer(withCustomerOnlineStatus(db, row), false, { includeType: true }),
           ...(seedCounts.get(row.CustomerId) || {
             conversationCount: 0,
             waitingCount: 0
@@ -3244,6 +3379,194 @@ function createApplication(options = {}) {
 
     if (
       req.method === 'PATCH' &&
+      (params = matchPath(pathname, '/api/v1/admin/robot-customers/:customerId'))
+    ) {
+      const session = requireAdmin(db, req);
+      const body = await readJson(req);
+      const robot = db.prepare(`
+        SELECT * FROM CustomerProfile WHERE CustomerId = ? AND Seed = 2
+      `).get(params.customerId);
+      if (!robot) throw new ApiError(404, 'ROBOT_CUSTOMER_NOT_FOUND', 'Robot customer not found.');
+
+      const profileKeys = [
+        'displayName', 'age', 'sex', 'countryCode', 'state', 'city',
+        'lookingFor', 'maritalStatus', 'workField', 'englishLevel',
+        'languages', 'traits', 'interests', 'movies', 'music', 'goals',
+        'preferredAgeMin', 'preferredAgeMax', 'personalityType', 'bio',
+        'story', 'profilePhoto', 'publicPhotos', 'privatePhotos'
+      ];
+      const profileChanged = profileKeys.some((key) => Object.prototype.hasOwnProperty.call(body, key));
+      const active = body.active === undefined ? Number(robot.Active) : Number(Boolean(body.active));
+      const timestamp = now();
+      let displayName = robot.DisplayName;
+
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        if (profileChanged) {
+          const age = body.age === undefined ? ageFromBirthDate(robot.BirthDate) : Number(body.age);
+          const profile = {
+            displayName: String(body.displayName ?? robot.DisplayName).trim(),
+            birthDate: birthDateForAge(age),
+            sex: String(body.sex ?? robot.Sex).trim(),
+            lookingFor: String(body.lookingFor ?? robot.GenderLookingFor).trim(),
+            countryCode: String(body.countryCode ?? robot.CountryCode).trim().toUpperCase(),
+            state: String(body.state ?? robot.StateId).trim(),
+            city: String(body.city ?? robot.CityName).trim(),
+            maritalStatus: String(body.maritalStatus ?? robot.MaritalStatus).trim(),
+            workField: String(body.workField ?? robot.WorkField).trim(),
+            englishLevel: String(body.englishLevel ?? robot.EnglishLevel).trim(),
+            languages: body.languages === undefined ? parseJsonArray(robot.LanguagesJson) : cleanStringArray(body.languages, 8),
+            traits: body.traits === undefined ? parseJsonArray(robot.TraitsJson) : cleanStringArray(body.traits, 3),
+            interests: body.interests === undefined ? parseJsonArray(robot.InterestsJson) : cleanStringArray(body.interests, 5),
+            movies: body.movies === undefined ? parseJsonArray(robot.MoviePreferencesJson) : cleanStringArray(body.movies, 3),
+            music: body.music === undefined ? parseJsonArray(robot.MusicPreferencesJson) : cleanStringArray(body.music, 3),
+            goals: body.goals === undefined ? parseJsonArray(robot.GoalsJson) : cleanStringArray(body.goals, 3),
+            preferredAgeMin: body.preferredAgeMin === undefined ? robot.PreferredAgeMin : Number(body.preferredAgeMin),
+            preferredAgeMax: body.preferredAgeMax === undefined ? robot.PreferredAgeMax : Number(body.preferredAgeMax),
+            personalityType: String(body.personalityType ?? robot.PersonalityType).trim(),
+            bio: String(body.bio ?? robot.Bio).trim(),
+            story: String(body.story ?? robot.Story).trim(),
+            profilePhoto: String(body.profilePhoto ?? robot.ProfilePhoto).trim(),
+            publicPhotos: body.publicPhotos === undefined ? parseJsonArray(robot.PublicPhotosJson) : cleanStringArray(body.publicPhotos, 3),
+            privatePhotos: body.privatePhotos === undefined ? parseJsonArray(robot.PrivatePhotosJson) : cleanStringArray(body.privatePhotos, 3)
+          };
+          if (!profile.publicPhotos.length) profile.publicPhotos = [profile.profilePhoto];
+
+          const fields = {};
+          if (profile.displayName.length < 2 || profile.displayName.length > 100) {
+            fields.displayName = ['Name must contain 2 to 100 characters.'];
+          }
+          if (!Number.isInteger(age) || age < 21 || age > 100) {
+            fields.age = ['Robot age must be between 21 and 100.'];
+          }
+          if (!['Man', 'Woman', 'Nonbinary', 'NotSpecified'].includes(profile.sex)) {
+            fields.sex = ['Select a supported sex value.'];
+          }
+          if (!/^[A-Z]{2}$/u.test(profile.countryCode)) fields.countryCode = ['Enter a two-letter country code.'];
+          if (!profile.state || profile.state.length > 120) fields.state = ['Enter a state or province.'];
+          if (!profile.city || profile.city.length > 120) fields.city = ['Enter a city.'];
+          for (const key of ['lookingFor', 'maritalStatus', 'workField', 'englishLevel', 'personalityType', 'bio', 'story']) {
+            if (!profile[key]) fields[key] = ['This profile field is required.'];
+          }
+          for (const key of ['languages', 'traits', 'interests', 'movies', 'music', 'goals']) {
+            if (!profile[key].length) fields[key] = ['Add at least one value.'];
+          }
+          if (
+            !Number.isInteger(profile.preferredAgeMin) ||
+            !Number.isInteger(profile.preferredAgeMax) ||
+            profile.preferredAgeMin < 18 ||
+            profile.preferredAgeMax < profile.preferredAgeMin ||
+            profile.preferredAgeMax > 120
+          ) {
+            fields.preferredAge = ['Enter a valid preferred age range.'];
+          }
+          if (profile.bio.length > 4000) fields.bio = ['Biography must not exceed 4,000 characters.'];
+          if (profile.story.length > 4000) fields.story = ['Story must not exceed 4,000 characters.'];
+          if (!validProfilePhoto(profile.profilePhoto)) {
+            fields.profilePhoto = ['Use an approved profile asset or JPG/PNG image.'];
+          }
+          if (![...profile.publicPhotos, ...profile.privatePhotos].every(validProfilePhoto)) {
+            fields.photos = ['Every public and private photo must use an approved JPG or PNG asset.'];
+          }
+          if (Object.keys(fields).length) {
+            throw new ApiError(422, 'VALIDATION_FAILED', 'Complete every required robot profile field.', fields);
+          }
+
+          const completeness = profileCompleteness(profile);
+          db.prepare(`
+            UPDATE CustomerProfile
+            SET DisplayName = ?, BirthDate = ?, Sex = ?, GenderLookingFor = ?,
+                CountryCode = ?, StateId = ?, CityName = ?, MaritalStatus = ?,
+                WorkField = ?, EnglishLevel = ?, LanguagesJson = ?, TraitsJson = ?,
+                InterestsJson = ?, MoviePreferencesJson = ?, MusicPreferencesJson = ?,
+                GoalsJson = ?, PreferredAgeMin = ?, PreferredAgeMax = ?,
+                PersonalityType = ?, Story = ?, Bio = ?, ProfilePhoto = ?,
+                PublicPhotosJson = ?, PrivatePhotosJson = ?,
+                ProfileCompleted = 1, ProfileCompleteness = ?, UpdateTime = ?
+            WHERE CustomerId = ?
+          `).run(
+            profile.displayName,
+            profile.birthDate,
+            profile.sex,
+            profile.lookingFor,
+            profile.countryCode,
+            profile.state,
+            profile.city,
+            profile.maritalStatus,
+            profile.workField,
+            profile.englishLevel,
+            JSON.stringify(profile.languages),
+            JSON.stringify(profile.traits),
+            JSON.stringify(profile.interests),
+            JSON.stringify(profile.movies),
+            JSON.stringify(profile.music),
+            JSON.stringify(profile.goals),
+            profile.preferredAgeMin,
+            profile.preferredAgeMax,
+            profile.personalityType,
+            profile.story,
+            profile.bio,
+            profile.profilePhoto,
+            JSON.stringify(profile.publicPhotos),
+            JSON.stringify(profile.privatePhotos),
+            completeness,
+            timestamp,
+            robot.CustomerId
+          );
+          displayName = profile.displayName;
+        }
+
+        db.prepare(`
+          UPDATE CustomerProfile SET Active = ?, UpdateTime = ? WHERE CustomerId = ?
+        `).run(active, timestamp, robot.CustomerId);
+
+        if (active) {
+          db.prepare(`
+            UPDATE SeedProfileProvenance
+            SET HumanReviewStatus = 'Approved',
+                OriginalityCheckStatus = CASE WHEN OriginalityCheckStatus = 'Pending' THEN 'Passed' ELSE OriginalityCheckStatus END,
+                AdultAppearanceCheckStatus = CASE WHEN AdultAppearanceCheckStatus = 'Pending' THEN 'Passed' ELSE AdultAppearanceCheckStatus END
+            WHERE CustomerId = ?
+          `).run(robot.CustomerId);
+        } else {
+          db.prepare(`
+            UPDATE RobotShiftSchedule
+            SET ShiftStatus = 'Failed', FailureCode = 'ADMIN_DEACTIVATED',
+                ActualEndTime = COALESCE(ActualEndTime, ?), UpdateTime = ?
+            WHERE RobotCustomerId = ? AND ShiftStatus = 'Active'
+          `).run(timestamp, timestamp, robot.CustomerId);
+          db.prepare(`
+            UPDATE RobotDailyActivity
+            SET Active = 0, LastOfflineTime = COALESCE(LastOfflineTime, ?), UpdateTime = ?
+            WHERE RobotCustomerId = ? AND Active = 1
+          `).run(timestamp, timestamp, robot.CustomerId);
+        }
+
+        audit(
+          db,
+          'Employee',
+          session.PrincipalId,
+          profileChanged ? 'RobotCustomerProfileUpdated' : active ? 'RobotCustomerActivated' : 'RobotCustomerDeactivated',
+          'Customer',
+          robot.CustomerId,
+          { active: Boolean(active), profileChanged }
+        );
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+
+      return json(res, 200, envelope({
+        customerId: robot.CustomerId,
+        displayName,
+        active: Boolean(active),
+        updated: true
+      }, requestId));
+    }
+
+    if (
+      req.method === 'PATCH' &&
       (params = matchPath(pathname, '/api/v1/admin/policies/:policyId'))
     ) {
       const session = requireAdmin(db, req);
@@ -3272,8 +3595,37 @@ function createApplication(options = {}) {
       const timestamp = new Date();
       const coverage = reconcileRobotOperations(db, timestamp);
       const current = timestamp.toISOString();
+      const robotFilters = [];
+      const robotFilterValues = [];
+      const countryCodeFilter = String(searchParams.get('countryCode') || '').trim().toUpperCase();
+      const stateFilter = String(searchParams.get('state') || '').trim();
+      const cityFilter = String(searchParams.get('city') || '').trim();
+      const activeFilter = String(searchParams.get('active') || '').trim().toLowerCase();
+      if (countryCodeFilter) {
+        robotFilters.push('p.CountryCode = ?');
+        robotFilterValues.push(countryCodeFilter);
+      }
+      if (stateFilter) {
+        robotFilters.push('p.StateId = ?');
+        robotFilterValues.push(stateFilter);
+      }
+      if (cityFilter) {
+        robotFilters.push('p.CityName = ?');
+        robotFilterValues.push(cityFilter);
+      }
+      if (['true', 'false'].includes(activeFilter)) {
+        robotFilters.push('p.Active = ?');
+        robotFilterValues.push(activeFilter === 'true' ? 1 : 0);
+      }
+      const robotWhere = robotFilters.length ? `AND ${robotFilters.join(' AND ')}` : '';
       const robots = db.prepare(`
-        SELECT p.CustomerId, p.DisplayName, p.Sex, p.Active, p.CityName,
+        SELECT p.CustomerId, p.DisplayName, p.BirthDate, p.Sex,
+          p.GenderLookingFor, p.CountryCode, p.StateId, p.CityName,
+          p.MaritalStatus, p.WorkField, p.EnglishLevel, p.LanguagesJson,
+          p.TraitsJson, p.InterestsJson, p.MoviePreferencesJson,
+          p.MusicPreferencesJson, p.GoalsJson, p.PreferredAgeMin,
+          p.PreferredAgeMax, p.PersonalityType, p.Story, p.Bio,
+          p.ProfilePhoto, p.PublicPhotosJson, p.PrivatePhotosJson, p.Active,
           s.RobotShiftScheduleId, s.PlannedStartTime, s.PlannedEndTime,
           s.ShiftStatus, s.IsReserve, provenance.CreationSource,
           provenance.HumanReviewStatus, provenance.AutoFilledFieldsJson
@@ -3285,8 +3637,9 @@ function createApplication(options = {}) {
           AND s.ShiftStatus = 'Active'
           AND s.PlannedStartTime <= ? AND s.PlannedEndTime > ?
         WHERE p.Seed = 2
+          ${robotWhere}
         ORDER BY p.Sex, p.DisplayName
-      `).all(current, current);
+      `).all(current, current, ...robotFilterValues);
       const shifts = db.prepare(`
         SELECT s.*, p.DisplayName
         FROM RobotShiftSchedule s
@@ -3323,10 +3676,31 @@ function createApplication(options = {}) {
         robots: robots.map((robot) => ({
           customerId: robot.CustomerId,
           displayName: robot.DisplayName,
+          birthDate: robot.BirthDate,
           sex: robot.Sex,
+          lookingFor: robot.GenderLookingFor,
+          countryCode: robot.CountryCode,
+          state: robot.StateId,
           city: robot.CityName,
+          maritalStatus: robot.MaritalStatus,
+          workField: robot.WorkField,
+          englishLevel: robot.EnglishLevel,
+          languages: parseJsonArray(robot.LanguagesJson),
+          traits: parseJsonArray(robot.TraitsJson),
+          interests: parseJsonArray(robot.InterestsJson),
+          movies: parseJsonArray(robot.MoviePreferencesJson),
+          music: parseJsonArray(robot.MusicPreferencesJson),
+          goals: parseJsonArray(robot.GoalsJson),
+          preferredAgeMin: robot.PreferredAgeMin,
+          preferredAgeMax: robot.PreferredAgeMax,
+          personalityType: robot.PersonalityType,
+          story: robot.Story,
+          bio: robot.Bio,
+          profilePhoto: robot.ProfilePhoto,
+          publicPhotos: parseJsonArray(robot.PublicPhotosJson),
+          privatePhotos: parseJsonArray(robot.PrivatePhotosJson),
           active: Boolean(robot.Active),
-          online: robot.ShiftStatus === 'Active',
+          online: Boolean(robot.Active) && robot.ShiftStatus === 'Active',
           shiftId: robot.RobotShiftScheduleId,
           shiftStart: robot.PlannedStartTime,
           shiftEnd: robot.PlannedEndTime,

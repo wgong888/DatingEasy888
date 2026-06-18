@@ -471,7 +471,6 @@ async function loadGifts() {
 function renderGiftStrip() {
   return `
     <section class="gift-strip" aria-label="Send a gift">
-      <div class="gift-strip-heading"><strong>Gifts</strong><span>Select to send immediately</span></div>
       <div class="gift-list">
         ${state.gifts.map((gift) => `
           <button class="gift-button ${state.me.creditBalance < gift.senderCost ? 'insufficient' : ''}"
@@ -538,7 +537,6 @@ async function openConversation(conversationId) {
     <form class="composer" data-composer>
       <textarea name="text" maxlength="500" placeholder="Write up to 60 words" aria-label="Message" required></textarea>
       <button class="primary-button" type="submit" data-send-message>Send</button>
-      <div class="composer-meta"><span data-word-count>0 / 60 words</span><span data-composer-balance>Balance: ${state.me.creditBalance}</span></div>
       <div class="composer-credit-warning ${state.me.creditBalance >= MESSAGE_CREDIT_COST ? 'hidden' : ''}" data-credit-warning>
         <span>Not enough credits to send. Add credits to keep chatting.</span>
         <button class="text-button" type="button" data-open-credits>Add credits</button>
@@ -1037,7 +1035,8 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('input', (event) => {
   if (!event.target.matches('.composer textarea')) return;
   const count = event.target.value.trim().split(/\s+/).filter(Boolean).length;
-  $('[data-word-count]', event.target.closest('form')).textContent = `${count} / 60 words`;
+  const wordCountLabel = $('[data-word-count]', event.target.closest('form'));
+  if (wordCountLabel) wordCountLabel.textContent = `${count} / 60 words`;
 });
 
 $('#credit-purchase-form').addEventListener('submit', (event) => {

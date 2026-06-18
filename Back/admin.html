@@ -120,6 +120,25 @@
         <div class="robot-operations-grid">
           <section class="data-panel">
             <div class="panel-heading"><h2>Robot inventory</h2><span>Profile type is hidden from customers</span></div>
+            <form id="robot-filter-form" class="robot-filter-form">
+              <label>Country
+                <select name="countryCode"></select>
+              </label>
+              <label>State
+                <select name="state"></select>
+              </label>
+              <label>City
+                <select name="city"></select>
+              </label>
+              <label>Active
+                <select name="active">
+                  <option value="">All</option>
+                  <option value="true">Active only</option>
+                  <option value="false">Inactive only</option>
+                </select>
+              </label>
+              <button class="secondary compact-button" type="submit">Search</button>
+            </form>
             <div id="robot-list" class="admin-table-list"></div>
           </section>
           <section class="data-panel">
@@ -244,6 +263,7 @@
   <dialog id="robot-dialog" class="admin-dialog robot-dialog">
     <form id="robot-form">
       <div class="dialog-heading"><h2>Create robot customer</h2><button class="icon-button" type="button" data-close-dialog aria-label="Close">×</button></div>
+      <input name="customerId" type="hidden">
       <label>Creation mode
         <select name="creationMode" required>
           <option value="AutoFill">Enter basics and auto-fill the rest</option>
@@ -301,8 +321,9 @@
         <label>Additional public photo assets, comma separated<input name="publicPhotos" data-optional></label>
         <label>Private photo assets, comma separated<input name="privatePhotos" data-optional></label>
       </div>
-      <p class="form-guidance">New robot customers remain inactive until originality, adult-appearance, and human review are approved.</p>
-      <div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>Cancel</button><button class="primary" type="submit">Create robot draft</button></div>
+      <label id="robot-active-label" class="check-label hidden"><input name="active" type="checkbox"> Robot active</label>
+      <p id="robot-review-guidance" class="form-guidance">New robot customers remain inactive until originality, adult-appearance, and human review are approved.</p>
+      <div class="dialog-actions"><button class="secondary" type="button" data-close-dialog>Cancel</button><button id="robot-submit-button" class="primary" type="submit">Create robot draft</button></div>
     </form>
   </dialog>
 </body>

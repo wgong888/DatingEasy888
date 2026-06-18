@@ -135,6 +135,58 @@ function renderRobotCityOptions(countryCode = 'US', submittedState = 'CA', submi
     .join('');
 }
 
+function renderRobotFilterCountryOptions(selectedValue = '') {
+  const form = $('#robot-filter-form');
+  form.elements.countryCode.innerHTML = [
+    optionHtml('', 'Any country', selectedValue),
+    ...(state.locations?.countries || []).map((country) => optionHtml(country.code, country.name, selectedValue))
+  ].join('');
+  renderRobotFilterStateOptions(selectedValue, '');
+}
+
+function renderRobotFilterStateOptions(countryCode = '', selectedValue = '') {
+  const form = $('#robot-filter-form');
+  const country = countryCode ? selectedCountry(countryCode) : null;
+  form.elements.state.innerHTML = [
+    optionHtml('', 'Any state', selectedValue),
+    ...((country?.states || []).map((item) => optionHtml(stateCode(item), item.name, selectedValue)))
+  ].join('');
+  form.elements.state.disabled = !countryCode;
+  renderRobotFilterCityOptions(countryCode, selectedValue, '');
+}
+
+function renderRobotFilterCityOptions(countryCode = '', submittedState = '', selectedValue = '') {
+  const form = $('#robot-filter-form');
+  const country = countryCode ? selectedCountry(countryCode) : null;
+  const locationState = country && submittedState ? selectedState(country, submittedState) : null;
+  form.elements.city.innerHTML = [
+    optionHtml('', 'Any city', selectedValue),
+    ...((locationState?.cities || []).map((city) => optionHtml(city, city, selectedValue)))
+  ].join('');
+  form.elements.city.disabled = !locationState;
+}
+
+function robotFilterParams() {
+  const form = $('#robot-filter-form');
+  const params = new URLSearchParams();
+  for (const key of ['countryCode', 'state', 'city', 'active']) {
+    const value = String(form.elements[key]?.value || '').trim();
+    if (value) params.set(key, value);
+  }
+  return params;
+}
+
+function ageFromBirthDate(value) {
+  if (!value) return '';
+  const birthDate = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(birthDate.getTime())) return '';
+  const today = new Date();
+  let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDiff = today.getUTCMonth() - birthDate.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getUTCDate() < birthDate.getUTCDate())) age -= 1;
+  return age;
+}
+
 function metricCard(label, data, suffix = '') {
   return `
     <article class="metric">
@@ -325,14 +377,18 @@ function renderRobots(data) {
   `).join('');
   $('#robot-list').innerHTML = data.robots.map((robot) => `
     <article class="admin-table-row ${robot.active ? '' : 'inactive'}">
-      <div><strong>${escapeHtml(robot.displayName)}</strong><span>${escapeHtml(robot.sex)} · ${escapeHtml(robot.city)}</span></div>
+      <div><strong>${escapeHtml(robot.displayName)}</strong><span>${escapeHtml(robot.sex)} · ${escapeHtml(robot.city)}, ${escapeHtml(robot.state || robot.countryCode)}</span></div>
       <div>
         <strong>${robot.online ? 'Online' : robot.active ? 'Off shift' : 'Inactive draft'}</strong>
         <span>${robot.shiftEnd ? `Until ${formatTime(robot.shiftEnd)}` : `${escapeHtml(robot.creationSource)} · ${escapeHtml(robot.reviewStatus)}`}</span>
       </div>
-      <div class="row-actions"><span class="robot-state ${robot.online ? 'online' : ''}">${robot.reserve ? 'Reserve' : robot.online ? 'Active' : robot.active ? 'Ready' : 'Review'}</span></div>
+      <div class="row-actions">
+        <span class="robot-state ${robot.online ? 'online' : ''}">${robot.reserve ? 'Reserve' : robot.online ? 'Active' : robot.active ? 'Ready' : 'Review'}</span>
+        <button class="secondary compact-button" type="button" data-edit-robot="${robot.customerId}">Edit</button>
+        <button class="${robot.active ? 'danger-button' : 'primary'} compact-button" type="button" data-toggle-robot="${robot.customerId}" data-active="${robot.active ? 'false' : 'true'}">${robot.active ? 'Deactivate' : 'Activate'}</button>
+      </div>
     </article>
-  `).join('');
+  `).join('') || '<div class="empty-admin-row">No robots match the selected filters.</div>';
   $('#robot-shift-list').innerHTML = data.shifts.map((shift) => `
     <article class="admin-table-row robot-shift-row">
       <div><strong>${escapeHtml(shift.displayName)}</strong><span>${escapeHtml(shift.sex)} · ${escapeHtml(shift.businessDate)}</span></div>
@@ -356,7 +412,12 @@ function renderRobots(data) {
 }
 
 async function loadRobots() {
-  renderRobots(await api('/api/v1/admin/robot-operations'));
+  await loadLocations();
+  if (!$('#robot-filter-form').elements.countryCode.options.length) {
+    renderRobotFilterCountryOptions('');
+  }
+  const params = robotFilterParams();
+  renderRobots(await api(`/api/v1/admin/robot-operations${params.toString() ? `?${params}` : ''}`));
 }
 
 async function loadHealth() {
@@ -434,15 +495,46 @@ function updateRobotCreationMode() {
   }
 }
 
-async function openRobotDialog() {
+async function openRobotDialog(robot = null) {
   const form = $('#robot-form');
   await loadLocations();
   form.reset();
-  form.elements.creationMode.value = 'AutoFill';
-  form.elements.sex.value = 'Woman';
-  renderRobotCountryOptions('US');
-  renderRobotStateOptions('US', 'CA');
-  renderRobotCityOptions('US', 'CA', 'Los Angeles');
+  form.elements.customerId.value = robot?.customerId || '';
+  form.elements.creationMode.disabled = Boolean(robot);
+  form.elements.creationMode.value = robot ? 'FullProfile' : 'AutoFill';
+  form.elements.displayName.value = robot?.displayName || '';
+  form.elements.age.value = robot ? ageFromBirthDate(robot.birthDate) : '';
+  form.elements.sex.value = robot?.sex || 'Woman';
+  renderRobotCountryOptions(robot?.countryCode || 'US');
+  renderRobotStateOptions(robot?.countryCode || 'US', robot?.state || 'CA');
+  renderRobotCityOptions(robot?.countryCode || 'US', robot?.state || 'CA', robot?.city || 'Los Angeles');
+  if (robot) {
+    form.elements.lookingFor.value = robot.lookingFor || '';
+    form.elements.maritalStatus.value = robot.maritalStatus || '';
+    form.elements.workField.value = robot.workField || '';
+    form.elements.englishLevel.value = robot.englishLevel || '';
+    form.elements.preferredAgeMin.value = robot.preferredAgeMin || '';
+    form.elements.preferredAgeMax.value = robot.preferredAgeMax || '';
+    form.elements.languages.value = (robot.languages || []).join(', ');
+    form.elements.traits.value = (robot.traits || []).join(', ');
+    form.elements.interests.value = (robot.interests || []).join(', ');
+    form.elements.movies.value = (robot.movies || []).join(', ');
+    form.elements.music.value = (robot.music || []).join(', ');
+    form.elements.goals.value = (robot.goals || []).join(', ');
+    form.elements.personalityType.value = robot.personalityType || '';
+    form.elements.bio.value = robot.bio || '';
+    form.elements.story.value = robot.story || '';
+    form.elements.profilePhoto.value = robot.profilePhoto || '';
+    form.elements.publicPhotos.value = (robot.publicPhotos || []).join(', ');
+    form.elements.privatePhotos.value = (robot.privatePhotos || []).join(', ');
+    form.elements.active.checked = Boolean(robot.active);
+  }
+  $('#robot-dialog .dialog-heading h2').textContent = robot ? 'Edit robot customer' : 'Create robot customer';
+  $('#robot-active-label').classList.toggle('hidden', !robot);
+  $('#robot-submit-button').textContent = robot ? 'Save robot profile' : 'Create robot draft';
+  $('#robot-review-guidance').textContent = robot
+    ? 'Editing changes the robot customer profile used in search and chat. Active controls whether the robot can appear in inventory and shifts.'
+    : 'New robot customers remain inactive until originality, adult-appearance, and human review are approved.';
   updateRobotCreationMode();
   $('#robot-dialog').showModal();
 }
@@ -556,12 +648,33 @@ $('#robot-form').addEventListener('change', (event) => {
   }
 });
 
+$('#robot-filter-form').addEventListener('change', (event) => {
+  if (event.target.name === 'countryCode') {
+    renderRobotFilterStateOptions(event.target.value, '');
+  }
+  if (event.target.name === 'state') {
+    const form = $('#robot-filter-form');
+    renderRobotFilterCityOptions(form.elements.countryCode.value, event.target.value, '');
+  }
+});
+
+$('#robot-filter-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    await loadRobots();
+    setStatus('Robot inventory filtered.', 'success');
+  } catch (error) {
+    setStatus(error.message, 'error');
+  }
+});
+
 $('#robot-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const body = Object.fromEntries(new FormData(form));
+  const customerId = body.customerId;
   body.age = Number(body.age);
-  if (body.creationMode === 'FullProfile') {
+  if (customerId || body.creationMode === 'FullProfile') {
     for (const field of [
       'languages', 'traits', 'interests', 'movies', 'music', 'goals',
       'publicPhotos', 'privatePhotos'
@@ -572,12 +685,19 @@ $('#robot-form').addEventListener('submit', async (event) => {
     body.preferredAgeMax = Number(body.preferredAgeMax);
   }
   try {
-    const result = await api('/api/v1/admin/robot-customers', { method: 'POST', body });
-    $('#robot-dialog').close();
-    setStatus(
-      `${result.displayName} created as an inactive ${result.creationMode === 'AutoFill' ? 'auto-filled' : 'full-profile'} robot draft.`,
-      'success'
-    );
+    if (customerId) {
+      body.active = form.elements.active.checked;
+      const result = await api(`/api/v1/admin/robot-customers/${customerId}`, { method: 'PATCH', body });
+      $('#robot-dialog').close();
+      setStatus(`${result.displayName} robot profile updated.`, 'success');
+    } else {
+      const result = await api('/api/v1/admin/robot-customers', { method: 'POST', body });
+      $('#robot-dialog').close();
+      setStatus(
+        `${result.displayName} created as an inactive ${result.creationMode === 'AutoFill' ? 'auto-filled' : 'full-profile'} robot draft.`,
+        'success'
+      );
+    }
     await loadRobots();
   } catch (error) {
     setStatus(error.message, 'error');
@@ -600,7 +720,7 @@ document.addEventListener('submit', async (event) => {
 });
 
 document.addEventListener('click', async (event) => {
-  const target = event.target.closest('button, [data-admin-view], [data-edit-employee], [data-remove-employee], [data-approve-reset], [data-reject-reset], [data-close-dialog]');
+  const target = event.target.closest('button, [data-admin-view], [data-edit-employee], [data-remove-employee], [data-edit-robot], [data-toggle-robot], [data-approve-reset], [data-reject-reset], [data-close-dialog]');
   if (!target) return;
   try {
     if (target.dataset.adminView) return await switchView(target.dataset.adminView);
@@ -627,6 +747,20 @@ document.addEventListener('click', async (event) => {
       await api(`/api/v1/admin/employees/${target.dataset.removeEmployee}`, { method: 'DELETE' });
       setStatus('Employee account removed.', 'success');
       return await loadEmployees();
+    }
+    if (target.dataset.editRobot) {
+      const robot = state.robots?.robots.find((item) => item.customerId === target.dataset.editRobot);
+      if (!robot) throw new Error('Robot profile is not loaded.');
+      return await openRobotDialog(robot);
+    }
+    if (target.dataset.toggleRobot) {
+      const active = target.dataset.active === 'true';
+      const result = await api(`/api/v1/admin/robot-customers/${target.dataset.toggleRobot}`, {
+        method: 'PATCH',
+        body: { active }
+      });
+      setStatus(`${result.displayName} ${active ? 'activated' : 'deactivated'}.`, 'success');
+      return await loadRobots();
     }
     if (target.dataset.approveReset) {
       const result = await api(`/api/v1/admin/password-reset-requests/${target.dataset.approveReset}/approve`, { method: 'POST' });
