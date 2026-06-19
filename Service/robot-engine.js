@@ -553,6 +553,8 @@ function recentlyUsedReply(candidate, used) {
 
 function classifyTopic(value) {
   const topics = [
+    ['reciprocal', /\b(what about you|how about you|and you|yourself|tell me about you|do you)\b/u],
+    ['shortFollowup', /^(yes|yeah|yep|no|nope|maybe|sure|ok|okay|haha|lol|tell me more|go on|why|really)[.!?\s]*$/u],
     ['profileAge', /\b(how old|your age|age are you|age)\b/u],
     ['profileLocation', /\b(where are you from|where do you live|where are you based|your city|from\?)\b/u],
     ['memory', /\b(remember|earlier|before|continue|last time)\b/u],
@@ -575,49 +577,138 @@ function classifyTopic(value) {
   return topics.find(([, pattern]) => pattern.test(value))?.[0] || 'general';
 }
 
+function customerMessages(history, robotId, currentText = '') {
+  const current = String(currentText || '').trim();
+  return history
+    .filter((message) => message.SenderId !== robotId)
+    .map((message) => String(message.Text || '').trim())
+    .filter(Boolean)
+    .filter((message, index, messages) => (
+      message !== current || index < messages.length - 1
+    ));
+}
+
+function topicLabel(topic) {
+  return ({
+    work: 'your workday',
+    feelings: 'how you are feeling',
+    travel: 'travel',
+    beach: 'the beach',
+    mountain: 'quiet outdoor places',
+    romance: 'connection',
+    flirt: 'the playful mood',
+    food: 'food and comfort',
+    weather: 'the weather',
+    sports: 'the game',
+    art: 'art and music',
+    style: 'style',
+    city: 'your everyday place'
+  })[topic] || 'what you shared';
+}
+
+function shortMessage(value) {
+  return String(value || '').trim().split(/\s+/u).filter(Boolean).length <= 3;
+}
+
+function summarizeCustomerLine(value) {
+  const text = String(value || '').trim().replaceAll(/\s+/gu, ' ');
+  if (!text) return '';
+  const withoutQuestion = text.replace(/[?!.]+$/u, '');
+  const words = withoutQuestion.split(/\s+/u).slice(0, 12).join(' ');
+  return words.charAt(0).toLowerCase() + words.slice(1);
+}
+
+function conversationContext(text, history, robot, customerInfo) {
+  const priorCustomerMessages = customerMessages(history, robot?.CustomerId, text);
+  const lastCustomerText = priorCustomerMessages.at(-1) || '';
+  const previousTopic = lastCustomerText ? classifyTopic(lastCustomerText.toLowerCase()) : '';
+  const currentTopic = classifyTopic(String(text).toLowerCase());
+  const previousLabel = topicLabel(previousTopic);
+  const lastSummary = summarizeCustomerLine(lastCustomerText);
+  const customerCity = customerInfo?.city || customerInfo?.CityName || '';
+  const continuity = lastSummary
+    ? `Earlier you mentioned ${lastSummary}. `
+    : '';
+  return {
+    priorCustomerMessages,
+    lastCustomerText,
+    previousTopic,
+    currentTopic,
+    previousLabel,
+    lastSummary,
+    continuity,
+    customerCity,
+    isShortFollowup: currentTopic === 'shortFollowup' || shortMessage(text)
+  };
+}
+
 const LOCAL_REPLY_BANK = Object.freeze({
+  reciprocal: [
+    'For me, it depends on the mood. I like slow honest talks, a little humor, and feeling that both people are actually present. What is that like for you?',
+    'I am drawn to conversations that feel easy but not empty. If we were sitting together, I would want to know what made you smile today.',
+    'I like warmth, curiosity, and a little playfulness. I do not need everything to be perfect, just real enough to enjoy. What do you usually notice first in someone?',
+    'I am the kind of person who enjoys small details: the tone of a voice, a quiet joke, the way someone talks about their day. What detail do people notice about you?'
+  ],
+  shortFollowup: [
+    '{continuity}Let us stay with {previousLabel} for a moment. What part of it is still on your mind?',
+    '{continuity}That little answer tells me there is more underneath. Do you want to explain it, or should I ask gently?',
+    '{continuity}I am with you. Give me one more detail so I can answer you better.',
+    '{continuity}Okay, then I will follow your lead. Should we keep this light, or go a little deeper?'
+  ],
   greeting: [
     'Hi{name}. I am here with you. What kind of mood are you bringing into this chat?',
     'Hello{name}. I am glad you stopped by. Do you want something light, sweet, or thoughtful tonight?',
     'Hey{name}. Tell me one small thing about your day before we choose where this conversation goes.',
     'Hi{name}. I like a warm start. What would make this chat feel good for you right now?',
     'Hello{name}. I was hoping for an easy conversation. What should I know about your evening?',
-    'Hey{name}. I am listening. Do you want to begin with your day, your mood, or something playful?'
+    'Hey{name}. I am listening. Do you want to begin with your day, your mood, or something playful?',
+    'Hi{name}. I am glad you are here. Tell me the true version of how your day feels, not just the polite version.',
+    'Hello{name}. I like when a chat starts simply. What kind of company would feel good right now?'
   ],
   feelings: [
     'I hear that this feels heavy{name}. Do you want to talk through what happened, or would a softer distraction help more?',
     'That sounds tender. What part has been sitting with you the most?',
     'I am listening{name}. We can slow down and take it one piece at a time.',
     'It makes sense that your mood would feel crowded. What would help you feel a little steadier tonight?',
-    'Thank you for saying it plainly. Do you want comfort, advice, or just someone to stay with the feeling for a minute?'
+    'Thank you for saying it plainly. Do you want comfort, advice, or just someone to stay with the feeling for a minute?',
+    '{continuity}I do not want to rush past that feeling. What would make this minute a little easier for you?',
+    'That sounds like it has been taking space in your chest. Do you want me to be soft with you, or help you untangle it?'
   ],
   work: [
     'That sounds like a lot to carry{name}. What part of work took the most energy from you today?',
     'A long workday can follow you home. What would help the rest of the evening feel lighter?',
     'I can hear the tiredness in that. Was it the people, the pace, or the pressure that got to you most?',
     'Work stress can make everything feel tight. Tell me the one moment you wish had gone differently.',
-    'You deserve a softer landing after that. What kind of conversation would help you unwind?'
+    'You deserve a softer landing after that. What kind of conversation would help you unwind?',
+    '{continuity}Work can steal the whole mood if you let it. What would help you leave it outside the door for a while?',
+    'That sounds draining. If I could take one small piece of that stress off your shoulders, which piece would you hand me first?'
   ],
   romance: [
     'That has a sweet feeling to it{name}. What does being cared for look like to you in small everyday ways?',
     'I like when a conversation gets honest about connection. What makes you feel close to someone?',
     'That sounds like your heart is asking for something real. What kind of attention matters most to you?',
     'Romance feels best when it is unhurried. What would make you feel seen tonight?',
-    'I can stay with that thought. Do you usually open your heart quickly or carefully?'
+    'I can stay with that thought. Do you usually open your heart quickly or carefully?',
+    '{continuity}Connection is usually hidden in the small things. What small thing makes you feel wanted?',
+    'I like that you brought the conversation there. Do you trust words first, or actions?'
   ],
   flirt: [
     'You are making the conversation warmer{name}. Should we keep it playful or turn it a little more intimate?',
     'That is a bold little spark. What kind of teasing makes you smile without rushing things?',
     'I like playful energy when it still feels respectful. Tell me what kind of attention you enjoy most.',
     'You have my attention. Do you want sweet flirting, confident flirting, or something softer?',
-    'That made me smile. Let us keep the mood warm and easy. What would you say next if we were sitting close?'
+    'That made me smile. Let us keep the mood warm and easy. What would you say next if we were sitting close?',
+    '{continuity}I like a little tension when it still feels comfortable. Are you usually shy at first, or more direct?',
+    'That is playful. I can meet you there, but I like taking my time. What kind of flirting feels best to you?'
   ],
   travel: [
     'That sounds like a good conversation to wander into{name}. What part of the trip feels most alive in your mind?',
     'Travel says a lot about a person. Do you like plans, surprises, or a mix of both?',
     'I can picture the mood of that. What would you want to do first when you arrive?',
     'A change of place can change the whole heart. What are you hoping to feel there?',
-    'That destination has a nice pull. Would you go for food, scenery, quiet, or adventure?'
+    'That destination has a nice pull. Would you go for food, scenery, quiet, or adventure?',
+    '{continuity}I like how travel can reveal someone. Are you more relaxed when everything is planned, or when the day surprises you?',
+    'That makes me wonder what kind of traveler you are. Do you chase views, food, people, or quiet moments?'
   ],
   beach: [
     'The ocean has a calming kind of honesty. Do you like the beach more for quiet, walking, or watching the light change?',
@@ -636,7 +727,9 @@ const LOCAL_REPLY_BANK = Object.freeze({
     'That sounds comforting{name}. Do you enjoy cooking more for yourself or for someone you like?',
     'A good meal is a gentle kind of care. What would you want to share across the table?',
     'I like hearing about food because it always leads to memory. What dish feels like home to you?',
-    'Coffee and dinner conversations both have their own mood. Which one fits tonight for you?'
+    'Coffee and dinner conversations both have their own mood. Which one fits tonight for you?',
+    '{continuity}Food has a way of making people tell better stories. Who taught you the meal you like most?',
+    'That sounds good in a very human way. Are you the kind of person who cooks to relax, or eats to feel cared for?'
   ],
   weather: [
     'Weather changes the whole feeling of a day. Does this kind of day make you want to go out or stay close to home?',
@@ -694,7 +787,8 @@ const LOCAL_REPLY_BANK = Object.freeze({
     'I think the answer depends on what you want from the moment. Are you hoping for comfort, clarity, or a little fun?',
     'Good question. I want to understand your side first, because the details change the answer.',
     'I can answer that, but I want to catch the reason behind it too. Are you asking from curiosity or from a feeling?',
-    'Let me think with you for a second. The simple answer matters less than what you are hoping it opens.'
+    'Let me think with you for a second. The simple answer matters less than what you are hoping it opens.',
+    '{continuity}I can answer, but I want to connect it to what you just shared. What would a good answer give you: comfort, honesty, or a little spark?'
   ],
   general: [
     'I am glad you shared that{name}. What part would you like to talk about a little more?',
@@ -705,7 +799,9 @@ const LOCAL_REPLY_BANK = Object.freeze({
     'That sounds worth staying with for a moment. What happened next?',
     'I am following you. What detail would make the picture clearer for me?',
     'That opens a few paths. Should we stay with the practical side or the feeling side?',
-    'Tell me the part that matters most to you, even if it seems small.'
+    'Tell me the part that matters most to you, even if it seems small.',
+    '{continuity}I do not want to lose the thread. What should I understand about where your mind is now?',
+    'That sounds like it could go in a few directions. Pick one for me: feeling, story, or a little fun.'
   ]
 });
 
@@ -715,13 +811,15 @@ function fillTemplate(template, context) {
     .replaceAll('{place}', context.place || '')
     .replaceAll('{robotAge}', context.robotAge || 'in my early thirties')
     .replaceAll('{robotPlace}', context.robotPlace || 'Los Angeles')
-    .replaceAll('{memory}', context.memory || 'what you shared earlier');
+    .replaceAll('{memory}', context.memory || 'what you shared earlier')
+    .replaceAll('{continuity}', context.continuity || '')
+    .replaceAll('{previousLabel}', context.previousLabel || 'that');
 }
 
 function chooseLocalReply(topic, text, history, context) {
   const bank = LOCAL_REPLY_BANK[topic] || LOCAL_REPLY_BANK.general;
   const used = recentRobotTexts(history);
-  const seed = `${topic}|${text}|${history.length}|${context.memory || ''}`;
+  const seed = `${topic}|${text}|${history.length}|${context.memory || ''}|${context.lastSummary || ''}`;
   for (let offset = 0; offset < bank.length; offset += 1) {
     const candidate = fillTemplate(bank[(stableIndex(seed, bank.length) + offset) % bank.length], context);
     if (!recentlyUsedReply(candidate, used)) return candidate;
@@ -732,6 +830,7 @@ function chooseLocalReply(topic, text, history, context) {
 function localResponse(text, history, customerInfo = null, robot = null, timestamp = new Date()) {
   const value = String(text).toLowerCase();
   const memory = findMemoryMarker(history);
+  const thread = conversationContext(text, history, robot, customerInfo);
   const name = firstName(customerInfo);
   const place = customerInfo?.city ? ` in ${customerInfo.city}` : '';
   const robotAge = ageFromBirthDate(robot?.BirthDate, timestamp);
@@ -740,13 +839,20 @@ function localResponse(text, history, customerInfo = null, robot = null, timesta
     name,
     place,
     memory,
+    continuity: thread.continuity,
+    previousLabel: thread.previousLabel,
+    lastSummary: thread.lastSummary,
     robotAge: robotAge ? String(robotAge) : '',
     robotPlace
   };
   if (/\b(remember|earlier|before|continue)\b/u.test(value) && memory) {
     return chooseLocalReply('memory', text, history, context);
   }
-  const topic = classifyTopic(value);
+  let topic = thread.currentTopic;
+  if (topic === 'shortFollowup' && !thread.lastCustomerText) topic = 'general';
+  if (topic === 'shortFollowup' && thread.previousTopic && LOCAL_REPLY_BANK[thread.previousTopic]) {
+    context.continuity = thread.continuity || `Let us stay with ${thread.previousLabel}. `;
+  }
   return chooseLocalReply(topic, text, history, context);
 }
 

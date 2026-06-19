@@ -817,6 +817,56 @@ test('robot local replies vary by customer topic and recent history', async () =
     .run();
 });
 
+test('robot uses recent chat history for follow-up and reciprocal replies', async () => {
+  const cookie = await loginCustomer();
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+  const robot = { customerId: currentRobotIdBySex('Woman') };
+  app.db.prepare(`
+    UPDATE Conversations
+    SET UpdatedAt = ?
+    WHERE CustomerAId = ? OR CustomerBId = ?
+  `).run(
+    new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+    robot.customerId,
+    robot.customerId
+  );
+  const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
+    method: 'POST',
+    headers: { Cookie: cookie }
+  });
+  const turns = [
+    ['history-work-start', 'My job has been stressful this week and I feel tired.', /work|energy|tired|pressure|stress|unwind|shoulders/iu],
+    ['history-short-followup', 'yes', /earlier|workday|work|stress|detail|mind|lead/iu],
+    ['history-reciprocal', 'What about you?', /for me|I like|I am drawn|I would want|small details/iu]
+  ];
+  const replies = [];
+  for (const [key, text, pattern] of turns) {
+    const sent = await request(
+      `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+      {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Idempotency-Key': key },
+        body: { text }
+      }
+    );
+    assert.equal(sent.response.status, 201);
+    app.processRobotReplies(robotReplyReadyTime(), 10);
+    const reply = app.db.prepare(`
+      SELECT * FROM ChatRecords
+      WHERE ConversationId = ? AND SenderId = ?
+      ORDER BY ChatTime DESC
+      LIMIT 1
+    `).get(conversation.payload.data.conversationId, robot.customerId);
+    assert.equal(reply.ResponseSource, 'RobotLocal');
+    assert.match(reply.Text, pattern);
+    replies.push(reply.Text);
+  }
+  assert.equal(new Set(replies).size, replies.length);
+  app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
+    .run();
+});
+
 test('robot answers profile location and age questions from its profile', async () => {
   const cookie = await loginCustomer();
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
