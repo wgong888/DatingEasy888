@@ -219,6 +219,7 @@ async function newCustomerProfileFlow(browser) {
 
   await page.locator('#view-me:not(.hidden)').waitFor();
   await page.getByText('Complete your profile', { exact: true }).waitFor();
+  assert.equal(await page.locator('#conversation-list .conversation-item').count(), 0);
   assert.match(
     await page.locator('#profile-photo-preview').getAttribute('src'),
     /default-woman\.svg$/
@@ -238,6 +239,7 @@ async function newCustomerProfileFlow(browser) {
   await page.locator('#app-view:not(.profile-incomplete)').waitFor();
   await page.getByRole('button', { name: 'Save profile' }).waitFor();
   assert.equal(await page.locator('#profile-required:not(.hidden)').count(), 0);
+  assert.equal(await page.locator('#conversation-list .conversation-item').count(), 0);
 
   await page.getByRole('button', { name: 'Discover', exact: true }).first().click();
   await page.locator('#view-discover:not(.hidden)').waitFor();

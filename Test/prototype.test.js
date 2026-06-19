@@ -310,6 +310,29 @@ test('customer, employee, administrator, and CEO review sessions can coexist', a
   assert.ok(ceo.payload.data.finance);
 });
 
+test('new real customer starts with an empty chat history', async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const created = await request('/api/v1/auth/customer/register', {
+    method: 'POST',
+    body: {
+      email: `empty-chat-${suffix}@example.test`,
+      password: 'Password123!',
+      displayName: 'Empty Chat Customer',
+      birthDate: '1991-01-01',
+      sex: 'Woman',
+      countryCode: 'US',
+      state: 'CA',
+      city: 'Los Angeles'
+    }
+  });
+  assert.equal(created.response.status, 201);
+  const conversations = await request('/api/v1/customer/conversations', {
+    headers: { Cookie: created.cookie }
+  });
+  assert.equal(conversations.response.status, 200);
+  assert.deepEqual(conversations.payload.data.items, []);
+});
+
 test('customer discovery hides internal customer types', async () => {
   const cookie = await loginCustomer();
   const result = await request('/api/v1/customer/discovery/profiles', {
@@ -642,25 +665,25 @@ test('active robot profile without a current shift answers customer chat on dema
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
   const robot = app.db.prepare(`
-    SELECT CustomerId AS customerId, DisplayName AS displayName, Seed, Active
-    FROM CustomerProfile
-    WHERE DisplayName = 'ClaireFL Eve Bailey'
-  `).get();
+    SELECT p.CustomerId AS customerId, p.DisplayName AS displayName,
+      p.CityName AS cityName, p.StateId AS state, p.Seed, p.Active
+    FROM CustomerProfile p
+    WHERE p.Seed = 2
+      AND p.Active = 1
+      AND NOT EXISTS (
+        SELECT 1
+        FROM RobotShiftSchedule s
+        WHERE s.RobotCustomerId = p.CustomerId
+          AND s.ShiftStatus = 'Active'
+          AND s.PlannedStartTime <= ?
+          AND s.PlannedEndTime > ?
+      )
+    ORDER BY p.DisplayName
+    LIMIT 1
+  `).get(new Date().toISOString(), new Date().toISOString());
   assert.ok(robot);
   assert.equal(robot.Seed, 2);
   assert.equal(robot.Active, 1);
-  const timestamp = new Date().toISOString();
-  assert.equal(
-    app.db.prepare(`
-      SELECT COUNT(*) AS value
-      FROM RobotShiftSchedule
-      WHERE RobotCustomerId = ?
-        AND ShiftStatus = 'Active'
-        AND PlannedStartTime <= ?
-        AND PlannedEndTime > ?
-    `).get(robot.customerId, timestamp, timestamp).value,
-    0
-  );
 
   const conversation = await request(`/api/v1/customer/conversations/with/${robot.customerId}`, {
     method: 'POST',
@@ -671,8 +694,8 @@ test('active robot profile without a current shift answers customer chat on dema
     `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
     {
       method: 'POST',
-      headers: { Cookie: cookie, 'Idempotency-Key': 'clairefl-on-demand-robot-chat' },
-      body: { text: 'Hi Claire, where are you from?' }
+      headers: { Cookie: cookie, 'Idempotency-Key': `off-shift-on-demand-${robot.customerId}` },
+      body: { text: `Hi ${robot.displayName}, where are you from?` }
     }
   );
   assert.equal(sent.response.status, 201);
@@ -686,7 +709,7 @@ test('active robot profile without a current shift answers customer chat on dema
   `).get(conversation.payload.data.conversationId, robot.customerId);
   assert.ok(reply);
   assert.equal(reply.ResponseSource, 'RobotLocal');
-  assert.match(reply.Text, /Charleston|WV|home base|based|from/iu);
+  assert.match(reply.Text, new RegExp(`${robot.cityName}|${robot.state}|home base|based|from`, 'iu'));
   app.db.prepare("UPDATE CustomerProfile SET CreditsRemain = 250 WHERE Email = 'demo@datingeasy.test'")
     .run();
 });

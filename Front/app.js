@@ -16,7 +16,8 @@ const state = {
   chatFollowupTimers: [],
   discoverLocations: null,
   discoveryRequestId: 0,
-  activeConversationSignature: ''
+  activeConversationSignature: '',
+  sessionVersion: 0
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -223,7 +224,7 @@ function transactionLabel(type) {
 
 async function bootstrap() {
   try {
-    state.me = await api('/api/v1/customer/me');
+    startCustomerSession(await api('/api/v1/customer/me'));
     showApplication();
     await Promise.all([loadConversations(), loadGifts()]);
     switchView('messages');
@@ -239,7 +240,21 @@ function showAuthentication() {
   $('#app-view').classList.add('hidden');
 }
 
+function startCustomerSession(me) {
+  state.sessionVersion += 1;
+  state.me = me;
+  state.profiles = [];
+  state.favorites = [];
+  state.conversations = [];
+  state.gifts = [];
+  state.activeConversationId = null;
+  state.activeChatPartner = null;
+  state.activeConversationSignature = '';
+  clearActiveChatFollowups();
+}
+
 function resetCustomerSessionUi() {
+  state.sessionVersion += 1;
   state.me = null;
   state.profiles = [];
   state.favorites = [];
@@ -346,10 +361,11 @@ function discoverFilterParams() {
 
 async function loadProfiles() {
   const requestId = ++state.discoveryRequestId;
+  const sessionVersion = state.sessionVersion;
   const params = discoverFilterParams();
   const suffix = params.toString() ? `?${params}` : '';
   const data = await api(`/api/v1/customer/discovery/profiles${suffix}`);
-  if (requestId !== state.discoveryRequestId) return;
+  if (requestId !== state.discoveryRequestId || sessionVersion !== state.sessionVersion || !state.me) return;
   state.profiles = data.items;
   renderProfileGrid($('#profile-grid'), state.profiles, 'No profiles match this search.');
 }
@@ -362,7 +378,9 @@ async function runProfileSearch(button = null) {
 }
 
 async function loadFavorites() {
+  const sessionVersion = state.sessionVersion;
   const data = await api('/api/v1/customer/favorites');
+  if (sessionVersion !== state.sessionVersion || !state.me) return;
   state.favorites = data.items;
   renderProfileGrid($('#favorite-grid'), state.favorites, 'You have not saved any profiles yet.');
 }
@@ -486,7 +504,9 @@ async function startConversation(customerId) {
 }
 
 async function loadConversations() {
+  const sessionVersion = state.sessionVersion;
   const data = await api('/api/v1/customer/conversations');
+  if (sessionVersion !== state.sessionVersion || !state.me) return;
   state.conversations = data.items;
   renderConversationList();
 }
@@ -512,7 +532,9 @@ function renderConversationList() {
 }
 
 async function loadGifts() {
+  const sessionVersion = state.sessionVersion;
   const data = await api('/api/v1/customer/gifts');
+  if (sessionVersion !== state.sessionVersion || !state.me) return;
   state.gifts = data.items;
 }
 
@@ -556,12 +578,14 @@ function updateComposerCreditState(form = $('[data-composer]')) {
 }
 
 async function openConversation(conversationId) {
+  const sessionVersion = state.sessionVersion;
   state.activeConversationId = conversationId;
   renderConversationList();
   const panel = $('#conversation-panel');
   panel.classList.remove('empty-state');
   panel.innerHTML = '<div class="panel-loading">Opening conversation…</div>';
   const data = await api(`/api/v1/customer/conversations/${conversationId}/messages`);
+  if (sessionVersion !== state.sessionVersion || !state.me || conversationId !== state.activeConversationId) return;
   state.activeConversationSignature = messageSignature(data.messages);
   state.activeChatPartner = data.otherCustomer;
   renderConversationList();
@@ -601,9 +625,15 @@ async function openConversation(conversationId) {
 
 async function refreshActiveConversation() {
   if (state.currentView !== 'messages' || !state.activeConversationId) return;
+  const sessionVersion = state.sessionVersion;
   const conversationId = state.activeConversationId;
   const data = await api(`/api/v1/customer/conversations/${conversationId}/messages`);
-  if (conversationId !== state.activeConversationId || state.currentView !== 'messages') return;
+  if (
+    sessionVersion !== state.sessionVersion ||
+    !state.me ||
+    conversationId !== state.activeConversationId ||
+    state.currentView !== 'messages'
+  ) return;
   const signature = messageSignature(data.messages);
   if (signature === state.activeConversationSignature) return;
   state.activeConversationSignature = signature;
@@ -698,7 +728,9 @@ async function sendGift(giftId) {
 }
 
 async function loadLedger() {
+  const sessionVersion = state.sessionVersion;
   const data = await api('/api/v1/customer/credits/ledger');
+  if (sessionVersion !== state.sessionVersion || !state.me) return;
   $('#ledger-list').innerHTML = data.items.map((item) => `
     <div class="ledger-row">
       <div>
@@ -876,7 +908,7 @@ $('#login-form').addEventListener('submit', async (event) => {
     const body = Object.fromEntries(new FormData(event.currentTarget));
     try {
       const login = await api('/api/v1/auth/customer/login', { method: 'POST', body });
-      state.me = await api('/api/v1/customer/me');
+      startCustomerSession(await api('/api/v1/customer/me'));
       showApplication();
       await Promise.all([loadConversations(), loadGifts()]);
       switchView(
@@ -917,7 +949,7 @@ $('#register-form').addEventListener('submit', async (event) => {
     const body = Object.fromEntries(new FormData(event.currentTarget));
     try {
       await api('/api/v1/auth/customer/register', { method: 'POST', body });
-      state.me = await api('/api/v1/customer/me');
+      startCustomerSession(await api('/api/v1/customer/me'));
       showApplication();
       await Promise.all([loadConversations(), loadGifts()]);
       switchView('me', { load: false });
