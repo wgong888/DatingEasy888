@@ -1,14 +1,16 @@
 # DatingEasy888 Test Strategy
 
-Status: design plan with an initial automated prototype suite.
+Status: design plan with an Arfa pre-deploy release gate.
 
-Current prototype coverage:
-- 17 Node API/integration tests
+Current Arfa gate:
+- Full pre-deploy checklist: `Design/Testing/PRE_DEPLOY_FULL_TEST_PLAN.md`
+- Automated command: `npm run verify`
+- 50 Node API/integration/scheduler tests
 - Playwright browser smoke flows for customer desktop/mobile, employee desktop,
-  and administrator desktop
+  administrator desktop, and CEO dashboard
 - Screenshot review for primary customer and employee workflows
 
-This initial suite does not replace the production SQL Server, cross-browser,
+This Arfa suite does not replace the production SQL Server, cross-browser,
 security, performance, accessibility, payment-provider, media, or deployment
 testing described below.
 

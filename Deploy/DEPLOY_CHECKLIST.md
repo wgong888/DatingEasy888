@@ -2,8 +2,9 @@
 
 ## Before Deploy
 
-- Run `npm test`.
-- Run `npm run test:browser`.
+- Run the full pre-deploy release gate in
+  `Design/Testing/PRE_DEPLOY_FULL_TEST_PLAN.md`.
+- Run `npm run verify`.
 - Confirm `curl http://127.0.0.1:4173/api/v1/health` returns `Healthy`.
 - Confirm no local-only files are included in the deploy package.
 - Confirm the latest code is committed and pushed to GitHub.
@@ -34,4 +35,3 @@
   Render free hosting.
 - Payment, SMS, email, outside AI, media storage, SQL Server, and C# Web API are
   still future Beta/production work.
-
