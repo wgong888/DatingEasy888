@@ -229,6 +229,7 @@ async function bootstrap() {
     switchView('messages');
   } catch (error) {
     if (error.status !== 401) showToast(error.message);
+    resetCustomerSessionUi();
     showAuthentication();
   }
 }
@@ -236,6 +237,53 @@ async function bootstrap() {
 function showAuthentication() {
   $('#auth-view').classList.remove('hidden');
   $('#app-view').classList.add('hidden');
+}
+
+function resetCustomerSessionUi() {
+  state.me = null;
+  state.profiles = [];
+  state.favorites = [];
+  state.conversations = [];
+  state.gifts = [];
+  state.activeConversationId = null;
+  state.activeChatPartner = null;
+  state.pendingProfilePhoto = null;
+  state.pendingPrivatePhoto = null;
+  state.currentView = 'messages';
+  state.previousListView = 'discover';
+  state.activeConversationSignature = '';
+  clearActiveChatFollowups();
+
+  $('#profile-edit-form').reset();
+  $('#password-change-form').reset();
+  $('#discover-filter-form').reset();
+  $('#credit-purchase-form').reset();
+  $('#profile-photo-input').value = '';
+  $('#private-photo-input').value = '';
+  $('#profile-photo-preview').removeAttribute('src');
+  $('#me-name').textContent = '';
+  $('#me-title').textContent = '';
+  $('#me-location').textContent = '';
+  $('#me-photo').removeAttribute('src');
+  $('#me-photo').removeAttribute('alt');
+  $('#profile-grid').innerHTML = '';
+  $('#favorite-grid').innerHTML = '';
+  $('#conversation-list').innerHTML = '';
+  $('#ledger-list').innerHTML = '';
+  $('#profile-page').innerHTML = '';
+  $('#conversation-panel').className = 'conversation-panel empty-state';
+  $('#conversation-panel').innerHTML = '<div><span class="empty-icon">✉</span><h2>Choose a conversation</h2><p>Your messages will appear here.</p></div>';
+  $('#password-required').classList.add('hidden');
+  $('#profile-required').classList.add('hidden');
+  $('#profile-completeness').textContent = '0%';
+  $('#save-profile-button').textContent = 'Save profile';
+  $('#app-view').classList.remove('nav-open', 'profile-incomplete');
+  $('#menu-button').setAttribute('aria-expanded', 'false');
+  $$('.app-main > .app-view').forEach((section) => section.classList.add('hidden'));
+  $('#view-messages').classList.remove('hidden');
+  $$('dialog[open]').forEach((dialog) => dialog.close());
+  setAuthTab('login');
+  $('#auth-error').textContent = '';
 }
 
 function fillProfileEditor() {
@@ -802,9 +850,7 @@ document.addEventListener('click', async (event) => {
     if (target.id === 'logout-button') {
       return await withButtonBusy(target, async () => {
         await api('/api/v1/auth/logout', { method: 'POST' });
-        state.me = null;
-        state.activeConversationId = null;
-        clearActiveChatFollowups();
+        resetCustomerSessionUi();
         showAuthentication();
         showToast('Signed out');
       });

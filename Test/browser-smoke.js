@@ -290,6 +290,14 @@ async function newCustomerProfileFlow(browser) {
     path: path.join(OUTPUT, 'customer-profile-editor-mobile.png'),
     fullPage: true
   });
+  await page.locator('#logout-button').click();
+  await page.locator('#auth-view:not(.hidden)').waitFor();
+  assert.equal(await page.locator('#login-form:not(.hidden)').count(), 1);
+  assert.equal(await profile.locator('[name="email"]').inputValue(), '');
+  assert.equal(await profile.locator('[name="phone"]').inputValue(), '');
+  assert.equal(await profile.locator('[name="displayName"]').inputValue(), '');
+  assert.equal(await profile.locator('[name="maritalStatus"]').inputValue(), '');
+  assert.equal(await page.locator('#profile-photo-preview').getAttribute('src'), null);
   await context.close();
 }
 
