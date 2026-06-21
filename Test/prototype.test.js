@@ -1872,6 +1872,13 @@ test('employee sees assigned seed histories and can use all three response paths
     headers: { Cookie: login.cookie }
   });
   assert.equal(workspace.response.status, 200);
+  const keepalive = await request('/api/v1/auth/staff/keepalive', {
+    method: 'POST',
+    headers: { Cookie: login.cookie }
+  });
+  assert.equal(keepalive.response.status, 200);
+  assert.equal(keepalive.payload.data.active, true);
+  assert.equal(keepalive.payload.data.role, 'ChatEmployee');
   assert.equal(workspace.payload.data.assignedSeeds.length, 5);
   assert.ok(workspace.payload.data.assignedSeeds.every((profile) => profile.customerTypeCode === 1));
   assert.ok(workspace.payload.data.chatSlots.length >= 1);

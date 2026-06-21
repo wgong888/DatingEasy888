@@ -7,6 +7,7 @@ const state = {
   drafts: new Map(),
   messageRefreshTimer: null,
   workspaceRefreshTimer: null,
+  keepaliveTimer: null,
   messageRefreshInFlight: false,
   workspaceRefreshInFlight: false
 };
@@ -14,6 +15,7 @@ const state = {
 const MAX_MESSAGE_WORDS = 60;
 const MESSAGE_REFRESH_MS = 500;
 const WORKSPACE_REFRESH_MS = 15000;
+const STAFF_SESSION_KEEPALIVE_MS = 60_000;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -217,6 +219,44 @@ function renderMainChatHistory(slot) {
   }
 }
 
+function updateComposerWordCount(form) {
+  const count = wordCount(form.elements.text.value);
+  const wordCountLabel = form.querySelector('[data-word-count]');
+  if (wordCountLabel) wordCountLabel.textContent = `${count} / ${MAX_MESSAGE_WORDS} words`;
+}
+
+function sendComposerForm(form) {
+  return sendResponse(
+    form.dataset.sendForm,
+    form.elements.text.value,
+    form.elements.preparedReplyId.value || null
+  );
+}
+
+function bindComposerEvents() {
+  const form = $('#main-composer');
+  const textarea = $('#main-composer textarea');
+  if (!form || !textarea) return;
+  textarea.addEventListener('keydown', (event) => {
+    const enterPressed =
+      event.key === 'Enter' ||
+      event.key === 'Return' ||
+      event.code === 'Enter' ||
+      event.code === 'NumpadEnter';
+    if (!enterPressed || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    sendComposerForm(form);
+  });
+  textarea.addEventListener('input', () => {
+    updateComposerWordCount(form);
+    state.drafts.set(form.dataset.sendForm, {
+      text: form.elements.text.value,
+      preparedReplyId: form.elements.preparedReplyId.value || null
+    });
+  });
+}
+
 function renderConversationState(slot) {
   const stateElement = $('.conversation-state');
   if (!stateElement) return;
@@ -274,6 +314,7 @@ function renderMainChat() {
     </form>
   `;
   renderMainChatHistory(slot);
+  bindComposerEvents();
   requestAnimationFrame(() => {
     const history = $('#main-chat-history');
     history.scrollTop = history.scrollHeight;
@@ -391,6 +432,20 @@ async function refreshWorkspace() {
   }
 }
 
+async function keepStaffSessionAlive() {
+  if (!state.workspace || $('#workspace-view').classList.contains('hidden')) return;
+  try {
+    await api('/api/v1/auth/staff/keepalive', { method: 'POST' });
+  } catch (error) {
+    if (error.code === 'UNAUTHORIZED' || error.code === 'SESSION_EXPIRED') {
+      stopLiveRefresh();
+      state.workspace = null;
+      $('#workspace-view').classList.add('hidden');
+      $('#login-view').classList.remove('hidden');
+    }
+  }
+}
+
 function startLiveRefresh() {
   if (!state.messageRefreshTimer) {
     state.messageRefreshTimer = setInterval(refreshActiveConversation, MESSAGE_REFRESH_MS);
@@ -398,13 +453,19 @@ function startLiveRefresh() {
   if (!state.workspaceRefreshTimer) {
     state.workspaceRefreshTimer = setInterval(refreshWorkspace, WORKSPACE_REFRESH_MS);
   }
+  keepStaffSessionAlive();
+  if (!state.keepaliveTimer) {
+    state.keepaliveTimer = setInterval(keepStaffSessionAlive, STAFF_SESSION_KEEPALIVE_MS);
+  }
 }
 
 function stopLiveRefresh() {
   if (state.messageRefreshTimer) clearInterval(state.messageRefreshTimer);
   if (state.workspaceRefreshTimer) clearInterval(state.workspaceRefreshTimer);
+  if (state.keepaliveTimer) clearInterval(state.keepaliveTimer);
   state.messageRefreshTimer = null;
   state.workspaceRefreshTimer = null;
+  state.keepaliveTimer = null;
 }
 
 function replaceChatSlot(updatedSlot) {
@@ -488,7 +549,8 @@ async function sendResponse(conversationId, text, preparedReplyId = null) {
       }
     );
     state.drafts.delete(conversationId);
-    await loadWorkspace();
+    await refreshActiveConversation();
+    await refreshWorkspace();
     setStatus(`Sent as ${selectedSeed()?.displayName || 'the selected seed'} · ${result.responseSource}`, 'success');
   } catch (error) {
     setStatus(error.message, 'error');
@@ -523,9 +585,7 @@ $('#logout').addEventListener('click', async () => {
 document.addEventListener('input', (event) => {
   const form = event.target.closest('[data-send-form]');
   if (!form) return;
-  const count = wordCount(form.elements.text.value);
-  const wordCountLabel = form.querySelector('[data-word-count]');
-  if (wordCountLabel) wordCountLabel.textContent = `${count} / ${MAX_MESSAGE_WORDS} words`;
+  updateComposerWordCount(form);
   state.drafts.set(form.dataset.sendForm, {
     text: form.elements.text.value,
     preparedReplyId: form.elements.preparedReplyId.value || null
@@ -533,7 +593,12 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  const enterPressed = event.key === 'Enter' || event.code === 'Enter' || event.code === 'NumpadEnter';
+  if (event.defaultPrevented) return;
+  const enterPressed =
+    event.key === 'Enter' ||
+    event.key === 'Return' ||
+    event.code === 'Enter' ||
+    event.code === 'NumpadEnter';
   if (
     !event.target.matches('#main-composer textarea') ||
     !enterPressed ||
@@ -543,18 +608,15 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   event.preventDefault();
-  event.target.closest('form')?.requestSubmit();
+  const form = event.target.closest('form');
+  if (form) sendComposerForm(form);
 });
 
 document.addEventListener('submit', async (event) => {
   const form = event.target.closest('[data-send-form]');
   if (!form) return;
   event.preventDefault();
-  await sendResponse(
-    form.dataset.sendForm,
-    form.elements.text.value,
-    form.elements.preparedReplyId.value || null
-  );
+  await sendComposerForm(form);
 });
 
 document.addEventListener('click', (event) => {

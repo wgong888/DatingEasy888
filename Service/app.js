@@ -1646,6 +1646,15 @@ function createApplication(options = {}) {
       }, requestId));
     }
 
+    if (req.method === 'POST' && pathname === '/api/v1/auth/staff/keepalive') {
+      const session = authenticate(db, req, 'Employee');
+      return json(res, 200, envelope({
+        employeeId: session.PrincipalId,
+        role: session.Role,
+        active: true
+      }, requestId));
+    }
+
     if (req.method === 'POST' && pathname === '/api/v1/auth/logout') {
       const cookies = parseCookies(req);
       for (const sessionId of ALL_SESSION_COOKIES.map((cookieName) => cookies[cookieName]).filter(Boolean)) {
