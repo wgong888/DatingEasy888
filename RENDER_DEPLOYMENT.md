@@ -40,6 +40,34 @@ services:
 This follows Render's Blueprint model for a Node web service. Render sets the
 `PORT` environment variable automatically, and `Service/server.js` uses it.
 
+## Persistent Chat And History Data
+
+Arfa stores chats, profiles, credits, robot/admin changes, and review data in
+SQLite. The app now supports `DATINGEASY_DB_PATH` so the database can live on a
+persistent Render disk instead of the temporary service filesystem.
+
+Recommended Render data setting after attaching a persistent disk:
+
+```text
+DATINGEASY_DB_PATH=/var/data/datingeasy888.sqlite
+```
+
+Mount the Render disk at:
+
+```text
+/var/data
+```
+
+Important:
+
+- Do not run `npm run reset` on Render.
+- Production reset is blocked unless `ALLOW_PRODUCTION_DATABASE_RESET=true` is
+  deliberately set.
+- If no persistent disk is attached, Render filesystem data is still temporary
+  and can disappear on redeploy, restart, or instance replacement.
+- For Beta and production, move this data to SQL Server or another managed
+  database service.
+
 ## Deploy Steps
 
 1. Sign in to Render.
@@ -80,8 +108,7 @@ Prototype accounts are listed in `PROTOTYPE.md`.
 ## Important Prototype Notes
 
 - This is a test prototype, not production.
-- The prototype uses SQLite on the service filesystem. On the free Render plan,
-  data should be treated as temporary and may reset after rebuilds or instance
-  changes.
+- The prototype uses SQLite. History is preserved across Render deploys only
+  when `DATINGEASY_DB_PATH` points to an attached persistent disk.
 - Payment, SMS/email, real-time delivery, production AI, media storage, SQL
   Server, and ASP.NET Core are still simulated or future Beta work.

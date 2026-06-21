@@ -10,7 +10,8 @@
 - [x] Public health endpoint available
 - [x] API/integration suite passes
 - [x] Isolated desktop and mobile browser suite passes
-- [x] Demo database can be reset deterministically
+- [x] Demo database can be reset deterministically outside production
+- [x] Production database reset is blocked unless explicitly overridden
 - [x] Prototype limitations documented
 
 Run the release check:

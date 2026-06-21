@@ -8,6 +8,15 @@ const OUTPUT = path.join(ROOT, 'CodeSource', 'Test');
 const ORIGIN = process.env.PROTOTYPE_URL || 'http://127.0.0.1:4173';
 const EDGE = '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge';
 
+async function smokeScreenshot(page, filename) {
+  await page.screenshot({
+    path: path.join(OUTPUT, filename),
+    fullPage: true,
+    animations: 'disabled',
+    timeout: 90_000
+  });
+}
+
 async function customerFlow(browser, viewport, suffix) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
@@ -47,10 +56,7 @@ async function customerFlow(browser, viewport, suffix) {
     dimensions.width <= dimensions.viewport,
     `customer ${suffix} page overflows: ${dimensions.width} > ${dimensions.viewport}`
   );
-  await page.screenshot({
-    path: path.join(OUTPUT, `customer-discovery-${suffix}.png`),
-    fullPage: true
-  });
+  await smokeScreenshot(page, `customer-discovery-${suffix}.png`);
   await page.locator('.profile-photo').first().click();
   await page.locator('#view-profile:not(.hidden)').waitFor();
   const publicProfile = page.locator('#view-profile');
@@ -61,10 +67,7 @@ async function customerFlow(browser, viewport, suffix) {
   await publicProfile.getByRole('heading', { name: 'Music preferences' }).waitFor();
   const publicProfileText = await publicProfile.innerText();
   assert.doesNotMatch(publicProfileText, /@virtual\.datingeasy\.test|555-/iu);
-  await page.screenshot({
-    path: path.join(OUTPUT, `customer-profile-${suffix}.png`),
-    fullPage: true
-  });
+  await smokeScreenshot(page, `customer-profile-${suffix}.png`);
   if (suffix === 'mobile') {
     await page.getByRole('button', { name: /^Chat with / }).click();
     await page.locator('.conversation-panel:not(.empty-state)').waitFor();
@@ -87,10 +90,7 @@ async function customerFlow(browser, viewport, suffix) {
     );
     assert.ok(chatDimensions.sendHeight >= 48, 'mobile Send button should be easy to tap');
     assert.ok(chatDimensions.textHeight >= 48, 'mobile chat input should be easy to tap');
-    await page.screenshot({
-      path: path.join(OUTPUT, 'customer-chat-mobile.png'),
-      fullPage: true
-    });
+    await smokeScreenshot(page, 'customer-chat-mobile.png');
   }
   if (suffix === 'desktop') {
     await page.getByRole('button', { name: /^Chat with / }).click();
@@ -121,19 +121,13 @@ async function customerFlow(browser, viewport, suffix) {
     await page.locator('#credits-dialog[open]').waitFor();
     assert.equal(await page.locator('.package-button').count(), 5);
     await page.locator('[data-select-package="1"]').click();
-    await page.screenshot({
-      path: path.join(OUTPUT, 'customer-credit-checkout.png'),
-      fullPage: true
-    });
+    await smokeScreenshot(page, 'customer-credit-checkout.png');
     await page.getByRole('button', { name: 'Add selected credits' }).click();
     await page.locator('#credits-dialog').waitFor({ state: 'hidden' });
     await page.locator('#credit-balance').filter({ hasText: '240' }).waitFor();
     await page.locator('.chat-favorite').click();
     await page.locator('.chat-favorite.active').waitFor();
-    await page.screenshot({
-      path: path.join(OUTPUT, 'customer-chat-desktop.png'),
-      fullPage: true
-    });
+    await smokeScreenshot(page, 'customer-chat-desktop.png');
     await page.locator('.conversation-item.active .mini-photo').click();
     await page.locator('#view-profile:not(.hidden)').waitFor();
     assert.equal(await page.locator('#view-profile .disclosure').count(), 0);
@@ -275,10 +269,7 @@ async function newCustomerProfileFlow(browser) {
   assert.equal(await profile.locator('[name="maritalStatus"]').inputValue(), 'Single');
   assert.equal(await profile.locator('[name="preferredAgeMin"]').inputValue(), '');
 
-  await page.screenshot({
-    path: path.join(OUTPUT, 'customer-profile-editor.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'customer-profile-editor.png');
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileDimensions = await page.evaluate(() => ({
     width: document.documentElement.scrollWidth,
@@ -288,10 +279,7 @@ async function newCustomerProfileFlow(browser) {
     mobileDimensions.width <= mobileDimensions.viewport,
     `profile editor mobile page overflows: ${mobileDimensions.width} > ${mobileDimensions.viewport}`
   );
-  await page.screenshot({
-    path: path.join(OUTPUT, 'customer-profile-editor-mobile.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'customer-profile-editor-mobile.png');
   await page.locator('#logout-button').click();
   await page.locator('#auth-view:not(.hidden)').waitFor();
   assert.equal(await page.locator('#login-form:not(.hidden)').count(), 1);
@@ -399,10 +387,7 @@ async function employeeFlow(browser) {
   assert.equal(latest.text, insertedText);
   assert.equal(latest.responseSource, 'PreparedText');
 
-  await page.screenshot({
-    path: path.join(OUTPUT, 'employee-workspace.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'employee-workspace.png');
   await page.getByRole('button', { name: 'Log out' }).click();
   await page.locator('#login-view:not(.hidden)').waitFor();
   await context.close();
@@ -554,10 +539,7 @@ async function adminFlow(browser) {
   await robotForm.locator('[name="creationMode"]').selectOption('FullProfile');
   await page.locator('#robot-full-fields:not(.hidden)').waitFor();
   assert.ok(await page.locator('#robot-full-fields [required]').count() >= 10);
-  await page.screenshot({
-    path: path.join(OUTPUT, 'admin-robot-full-profile-dialog.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'admin-robot-full-profile-dialog.png');
   await robotForm.locator('[name="creationMode"]').selectOption('AutoFill');
   await page.locator('#robot-full-fields').waitFor({ state: 'hidden' });
   await robotForm.locator('[name="displayName"]').fill('Browser Taylor');
@@ -568,10 +550,7 @@ async function adminFlow(browser) {
   await robotForm.locator('[name="city"]').selectOption('Los Angeles');
   assert.equal(await robotForm.locator('[name="state"]').inputValue(), 'CA');
   assert.equal(await robotForm.locator('[name="city"]').inputValue(), 'Los Angeles');
-  await page.screenshot({
-    path: path.join(OUTPUT, 'admin-robot-create-dialog.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'admin-robot-create-dialog.png');
   await robotForm.getByRole('button', { name: 'Create robot draft' }).click();
   await page.getByText(/Browser Taylor created as an inactive auto-filled robot draft/).waitFor();
   const robotDraft = page.locator('#robot-list .admin-table-row', { hasText: 'Browser Taylor' });
@@ -585,10 +564,7 @@ async function adminFlow(browser) {
   assert.ok(await page.locator('#robot-shift-list .robot-shift-row').count() >= 2);
   await page.getByRole('button', { name: 'Regenerate day' }).click();
   await page.getByText(/Robot shifts regenerated/).waitFor();
-  await page.screenshot({
-    path: path.join(OUTPUT, 'admin-robot-operations.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'admin-robot-operations.png');
 
   await page.getByRole('button', { name: 'Policies', exact: true }).click();
   await page.getByRole('button', { name: 'Add policy' }).click();
@@ -613,10 +589,7 @@ async function adminFlow(browser) {
   await page.getByRole('button', { name: 'Refresh checks' }).click();
   assert.ok(await page.locator('.health-row').count() >= 5);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  await page.screenshot({
-    path: path.join(OUTPUT, 'admin-dashboard.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'admin-dashboard.png');
   await page.getByRole('button', { name: 'Log out' }).click();
   await page.locator('#login-view:not(.hidden)').waitFor();
   await context.close();
@@ -648,10 +621,7 @@ async function ceoFlow(browser) {
     }
   });
 
-  await page.screenshot({
-    path: path.join(OUTPUT, 'ceo-dashboard.png'),
-    fullPage: true
-  });
+  await smokeScreenshot(page, 'ceo-dashboard.png');
 
   await page.locator('.ceo-approval-row', { hasText: 'Browser Services LLC' }).click();
   await page.locator('#decision-remark').fill('Browser approval test.');

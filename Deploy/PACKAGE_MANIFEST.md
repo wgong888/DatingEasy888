@@ -36,6 +36,5 @@ Excluded local files:
 Verification commands:
 
 ```text
-npm test
-npm run test:browser
+npm run verify
 ```

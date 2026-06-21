@@ -6,6 +6,8 @@
   `Design/Testing/PRE_DEPLOY_FULL_TEST_PLAN.md`.
 - Run `npm run verify`.
 - Confirm `curl http://127.0.0.1:4173/api/v1/health` returns `Healthy`.
+- Confirm the Render service has a persistent disk and `DATINGEASY_DB_PATH`
+  configured before testing history preservation across deploys.
 - Confirm no local-only files are included in the deploy package.
 - Confirm the latest code is committed and pushed to GitHub.
 
@@ -31,7 +33,7 @@
 
 ## Prototype Limits
 
-- SQLite is used for the Arfa prototype and should be treated as temporary on
-  Render free hosting.
+- SQLite is used for the Arfa prototype. Render history is persistent only when
+  a persistent disk is attached and `DATINGEASY_DB_PATH` points to it.
 - Payment, SMS, email, outside AI, media storage, SQL Server, and C# Web API are
   still future Beta/production work.

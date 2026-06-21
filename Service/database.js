@@ -5,7 +5,8 @@ const { DatabaseSync } = require('node:sqlite');
 const { hashPassword } = require('./security');
 
 const ROOT = path.resolve(__dirname, '..');
-const DEFAULT_DB_PATH = path.join(ROOT, 'CodeSource', 'Build', 'datingeasy888.sqlite');
+const DEFAULT_DB_PATH = process.env.DATINGEASY_DB_PATH ||
+  path.join(ROOT, 'CodeSource', 'Build', 'datingeasy888.sqlite');
 
 const profiles = [
   {
@@ -592,11 +593,11 @@ function migrateChargeRecord(db) {
 function migratePolicyDefaults(db) {
   db.prepare(`
     UPDATE PolicyDefinitions
-    SET PolicyValue = '15',
+    SET PolicyValue = '6',
         Version = Version + 1,
         UpdateTime = ?
     WHERE PolicyKey = 'robot_response_delay_seconds'
-      AND PolicyValue = '30'
+      AND PolicyValue IN ('15', '30')
   `).run(now());
 }
 
@@ -860,7 +861,7 @@ function seedDatabase(db) {
       'robot_response_delay_seconds',
       'Robot response delay seconds',
       'Minimum delay before a robot may answer a customer message.',
-      '15'
+      '6'
     ]
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, created, created);
@@ -1083,7 +1084,7 @@ function ensureRobotPrototypeData(db) {
       'robot_response_delay_seconds',
       'Robot response delay seconds',
       'Minimum delay before a robot may answer a customer message.',
-      '15'
+      '6'
     ]
   ].forEach(([key, title, description, value]) => {
     insertPolicy.run(randomUUID(), key, title, description, value, timestamp, timestamp);
@@ -1734,6 +1735,9 @@ function ensureUniqueVirtualCustomerNames(db) {
 }
 
 function resetDatabase(databasePath = DEFAULT_DB_PATH) {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_DATABASE_RESET !== 'true') {
+    throw new Error('Refusing to reset the production database without ALLOW_PRODUCTION_DATABASE_RESET=true.');
+  }
   if (fs.existsSync(databasePath)) fs.unlinkSync(databasePath);
   return openDatabase(databasePath);
 }

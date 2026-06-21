@@ -94,7 +94,7 @@ function customerByDisplayName(displayName) {
 }
 
 function robotReplyReadyTime() {
-  return new Date(Date.now() + 16_000);
+  return new Date(Date.now() + 7_000);
 }
 
 before(start);

@@ -78,8 +78,31 @@ test('existing prototype data is upgraded with robot inventory and AI policies',
       SELECT PolicyValue FROM PolicyDefinitions
       WHERE PolicyKey = 'robot_response_delay_seconds'
     `).get().PolicyValue,
-    '15'
+    '6'
   );
   db.close();
   fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('production database reset is blocked unless explicitly allowed', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'datingeasy-reset-guard-'));
+  const databasePath = path.join(directory, 'guard.sqlite');
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousAllowReset = process.env.ALLOW_PRODUCTION_DATABASE_RESET;
+  process.env.NODE_ENV = 'production';
+  delete process.env.ALLOW_PRODUCTION_DATABASE_RESET;
+  try {
+    const { resetDatabase } = require('../Service/database');
+    assert.throws(
+      () => resetDatabase(databasePath),
+      /Refusing to reset the production database/
+    );
+    assert.equal(fs.existsSync(databasePath), false);
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousAllowReset === undefined) delete process.env.ALLOW_PRODUCTION_DATABASE_RESET;
+    else process.env.ALLOW_PRODUCTION_DATABASE_RESET = previousAllowReset;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
