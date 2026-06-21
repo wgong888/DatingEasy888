@@ -5,12 +5,15 @@ const state = {
   selectedSeedId: null,
   activeConversationId: null,
   drafts: new Map(),
-  liveRefreshTimer: null,
-  refreshInFlight: false
+  messageRefreshTimer: null,
+  workspaceRefreshTimer: null,
+  messageRefreshInFlight: false,
+  workspaceRefreshInFlight: false
 };
 
 const MAX_MESSAGE_WORDS = 60;
-const LIVE_REFRESH_MS = 500;
+const MESSAGE_REFRESH_MS = 500;
+const WORKSPACE_REFRESH_MS = 15000;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -154,7 +157,7 @@ function renderSeedList() {
 }
 
 function latestMessage(slot) {
-  return slot.messages.at(-1);
+  return slot?.messages?.at(-1);
 }
 
 function renderCustomerList() {
@@ -202,6 +205,25 @@ function renderMessage(message, slot) {
   `;
 }
 
+function renderMainChatHistory(slot) {
+  const history = $('#main-chat-history');
+  if (!history) return;
+  const wasNearBottom = history.scrollHeight - history.scrollTop - history.clientHeight < 80;
+  history.innerHTML = slot.messages.map((message) => renderMessage(message, slot)).join('');
+  if (wasNearBottom) {
+    requestAnimationFrame(() => {
+      history.scrollTop = history.scrollHeight;
+    });
+  }
+}
+
+function renderConversationState(slot) {
+  const stateElement = $('.conversation-state');
+  if (!stateElement) return;
+  stateElement.className = `conversation-state ${slot.waitingForEmployee ? 'waiting' : ''}`;
+  stateElement.textContent = slot.status;
+}
+
 function renderMainChat() {
   const slot = activeConversation();
   const seed = selectedSeed();
@@ -235,9 +257,7 @@ function renderMainChat() {
       </div>
       <span class="conversation-state ${slot.waitingForEmployee ? 'waiting' : ''}">${escapeHtml(slot.status)}</span>
     </header>
-    <div id="main-chat-history" class="main-chat-history">
-      ${slot.messages.map((message) => renderMessage(message, slot)).join('')}
-    </div>
+    <div id="main-chat-history" class="main-chat-history"></div>
     <form id="main-composer" class="main-composer" data-send-form="${slot.conversationId}">
       <textarea
         name="text"
@@ -253,6 +273,7 @@ function renderMainChat() {
       </div>
     </form>
   `;
+  renderMainChatHistory(slot);
   requestAnimationFrame(() => {
     const history = $('#main-chat-history');
     history.scrollTop = history.scrollHeight;
@@ -347,14 +368,13 @@ function restoreComposerSnapshot(snapshot) {
 
 async function refreshWorkspace() {
   if (
-    state.refreshInFlight ||
+    state.workspaceRefreshInFlight ||
     !state.workspace ||
-    document.hidden ||
     $('#workspace-view').classList.contains('hidden')
   ) {
     return;
   }
-  state.refreshInFlight = true;
+  state.workspaceRefreshInFlight = true;
   const snapshot = captureComposerSnapshot();
   try {
     await loadWorkspace();
@@ -367,32 +387,83 @@ async function refreshWorkspace() {
       $('#login-view').classList.remove('hidden');
     }
   } finally {
-    state.refreshInFlight = false;
+    state.workspaceRefreshInFlight = false;
   }
 }
 
 function startLiveRefresh() {
-  if (state.liveRefreshTimer) return;
-  state.liveRefreshTimer = setInterval(refreshWorkspace, LIVE_REFRESH_MS);
+  if (!state.messageRefreshTimer) {
+    state.messageRefreshTimer = setInterval(refreshActiveConversation, MESSAGE_REFRESH_MS);
+  }
+  if (!state.workspaceRefreshTimer) {
+    state.workspaceRefreshTimer = setInterval(refreshWorkspace, WORKSPACE_REFRESH_MS);
+  }
 }
 
 function stopLiveRefresh() {
-  if (!state.liveRefreshTimer) return;
-  clearInterval(state.liveRefreshTimer);
-  state.liveRefreshTimer = null;
+  if (state.messageRefreshTimer) clearInterval(state.messageRefreshTimer);
+  if (state.workspaceRefreshTimer) clearInterval(state.workspaceRefreshTimer);
+  state.messageRefreshTimer = null;
+  state.workspaceRefreshTimer = null;
+}
+
+function replaceChatSlot(updatedSlot) {
+  if (!state.workspace) return;
+  const index = state.workspace.chatSlots.findIndex(
+    (slot) => slot.conversationId === updatedSlot.conversationId
+  );
+  if (index >= 0) state.workspace.chatSlots[index] = updatedSlot;
+  else state.workspace.chatSlots.unshift(updatedSlot);
+}
+
+async function refreshActiveConversation() {
+  if (
+    state.messageRefreshInFlight ||
+    !state.activeConversationId ||
+    !state.workspace ||
+    $('#workspace-view').classList.contains('hidden')
+  ) {
+    return;
+  }
+  state.messageRefreshInFlight = true;
+  try {
+    const updatedSlot = await api(
+      `/api/v1/backend/conversations/${encodeURIComponent(state.activeConversationId)}/messages`
+    );
+    if (updatedSlot.conversationId !== state.activeConversationId) return;
+    const current = activeConversation();
+    const currentLatest = latestMessage(current || {})?.chatRecordId || '';
+    const updatedLatest = latestMessage(updatedSlot)?.chatRecordId || '';
+    replaceChatSlot(updatedSlot);
+    if (currentLatest !== updatedLatest || current?.status !== updatedSlot.status) {
+      renderCustomerList();
+      renderConversationState(updatedSlot);
+      renderMainChatHistory(updatedSlot);
+    }
+  } catch (error) {
+    if (error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN') {
+      stopLiveRefresh();
+      state.workspace = null;
+      $('#workspace-view').classList.add('hidden');
+      $('#login-view').classList.remove('hidden');
+    }
+  } finally {
+    state.messageRefreshInFlight = false;
+  }
 }
 
 function selectSeed(seedId) {
   state.selectedSeedId = seedId;
   state.activeConversationId = conversationsForSelectedSeed()[0]?.conversationId || null;
   renderWorkspace();
+  refreshActiveConversation();
 }
 
 function selectConversation(conversationId) {
   state.activeConversationId = conversationId;
   renderWorkspace();
   $('#main-composer textarea')?.focus();
-  refreshWorkspace();
+  refreshActiveConversation();
 }
 
 async function sendResponse(conversationId, text, preparedReplyId = null) {
@@ -462,9 +533,10 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  const enterPressed = event.key === 'Enter' || event.code === 'Enter' || event.code === 'NumpadEnter';
   if (
     !event.target.matches('#main-composer textarea') ||
-    event.key !== 'Enter' ||
+    !enterPressed ||
     event.shiftKey ||
     event.isComposing
   ) {
@@ -517,9 +589,13 @@ document.addEventListener('click', (event) => {
 loadWorkspace({ preserveContext: false }).catch(() => {});
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refreshWorkspace();
+  if (!document.hidden) {
+    refreshWorkspace();
+    refreshActiveConversation();
+  }
 });
 
 window.addEventListener('focus', () => {
   refreshWorkspace();
+  refreshActiveConversation();
 });

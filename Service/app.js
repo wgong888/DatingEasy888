@@ -958,6 +958,40 @@ function getEmployeeConversation(db, conversationId, employeeId) {
   return row;
 }
 
+function employeeConversationMessages(db, conversationId, employeeId) {
+  const conversation = getEmployeeConversation(db, conversationId, employeeId);
+  const seed = getCustomer(db, conversation.SeedCustomerId);
+  const realCustomer = getCustomer(db, conversation.RealCustomerId);
+  const messages = db.prepare(`
+    SELECT * FROM (
+      SELECT ChatRecords.*, rowid AS RowOrder FROM ChatRecords
+      WHERE ConversationId = ?
+      ORDER BY ChatTime DESC, rowid DESC
+      LIMIT 20
+    )
+    ORDER BY ChatTime ASC, RowOrder ASC
+  `).all(conversationId);
+  const latest = messages.at(-1);
+  const waitingForEmployee = Boolean(latest && latest.SenderId === conversation.RealCustomerId);
+  return {
+    conversationId,
+    updatedAt: conversation.UpdatedAt,
+    status: waitingForEmployee ? 'Waiting for response' : 'Responded',
+    waitingForEmployee,
+    seed: normalizeCustomer(withCustomerOnlineStatus(db, seed), false, { includeType: true }),
+    realCustomer: normalizeCustomer(withCustomerOnlineStatus(db, realCustomer), false, { includeType: true }),
+    messages: messages.map((message) => ({
+      chatRecordId: message.ChatRecordId,
+      chatTime: message.ChatTime,
+      senderId: message.SenderId,
+      receiverId: message.ReceiverId,
+      text: message.Text,
+      messageType: message.MessageType,
+      responseSource: message.ResponseSource
+    }))
+  };
+}
+
 function findOrCreateConversation(db, customerId, targetCustomerId) {
   if (customerId === targetCustomerId) {
     throw new ApiError(422, 'INVALID_RECIPIENT', 'You cannot message yourself.');
@@ -2622,6 +2656,21 @@ function createApplication(options = {}) {
     }
 
     if (
+      req.method === 'GET' &&
+      (params = matchPath(pathname, '/api/v1/backend/conversations/:conversationId/messages'))
+    ) {
+      const session = authenticate(db, req, 'Employee', { role: 'ChatEmployee' });
+      if (session.Role !== 'ChatEmployee') {
+        throw new ApiError(403, 'FORBIDDEN', 'Employee workspace access is required.');
+      }
+      return json(
+        res,
+        200,
+        envelope(employeeConversationMessages(db, params.conversationId, session.PrincipalId), requestId)
+      );
+    }
+
+    if (
       req.method === 'POST' &&
       (params = matchPath(pathname, '/api/v1/backend/conversations/:conversationId/messages'))
     ) {
@@ -2779,18 +2828,14 @@ function createApplication(options = {}) {
         `).all(seed.CustomerId, seed.CustomerId, seed.CustomerId, seed.CustomerId);
         let waitingCount = 0;
         for (const conversation of conversations) {
-          const messages = db.prepare(`
-            SELECT * FROM (
-              SELECT ChatRecords.*, rowid AS RowOrder FROM ChatRecords
-              WHERE ConversationId = ?
-              ORDER BY ChatTime DESC, rowid DESC
-              LIMIT 20
-            )
-            ORDER BY ChatTime ASC, RowOrder ASC
-          `).all(conversation.ConversationId);
+          const messages = employeeConversationMessages(
+            db,
+            conversation.ConversationId,
+            session.PrincipalId
+          ).messages;
           const latest = messages.at(-1);
           const waitingForEmployee = Boolean(
-            latest && latest.SenderId === conversation.RealCustomerId
+            latest && latest.senderId === conversation.RealCustomerId
           );
           if (waitingForEmployee) waitingCount += 1;
           chatSlots.push({
@@ -2804,15 +2849,7 @@ function createApplication(options = {}) {
               false,
               { includeType: true }
             ),
-            messages: messages.map((message) => ({
-              chatRecordId: message.ChatRecordId,
-              chatTime: message.ChatTime,
-              senderId: message.SenderId,
-              receiverId: message.ReceiverId,
-              text: message.Text,
-              messageType: message.MessageType,
-              responseSource: message.ResponseSource
-            }))
+            messages
           });
         }
         seedCounts.set(seed.CustomerId, {

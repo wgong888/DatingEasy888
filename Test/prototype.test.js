@@ -1997,6 +1997,14 @@ test('employee workspace returns the latest seed conversation messages', async (
     slot.messages.some((message) => message.text === 'Employee latest message 01'),
     false
   );
+
+  const directMessages = await request(
+    `/api/v1/backend/conversations/${conversation.payload.data.conversationId}/messages`,
+    { headers: { Cookie: employeeCookie } }
+  );
+  assert.equal(directMessages.response.status, 200);
+  assert.equal(directMessages.payload.data.messages.length, 20);
+  assert.equal(directMessages.payload.data.messages.at(-1).text, 'Employee latest message 25');
 });
 
 test('employee and administrator routes enforce role separation', async () => {
