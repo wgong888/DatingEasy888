@@ -9,7 +9,8 @@ const state = {
   refreshInFlight: false
 };
 
-const LIVE_REFRESH_MS = 1500;
+const MAX_MESSAGE_WORDS = 60;
+const LIVE_REFRESH_MS = 500;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -63,6 +64,10 @@ function setStatus(message, tone = '') {
   const element = $('#workspace-status');
   element.textContent = message;
   element.className = `workspace-status ${tone}`.trim();
+}
+
+function wordCount(text) {
+  return String(text || '').trim().split(/\s+/u).filter(Boolean).length;
 }
 
 function idempotencyKey() {
@@ -243,7 +248,7 @@ function renderMainChat() {
       >${escapeHtml(draft.text)}</textarea>
       <input name="preparedReplyId" type="hidden" value="${escapeHtml(draft.preparedReplyId || '')}">
       <div class="composer-footer">
-        <span><strong>No gifts</strong> · Employee replies only</span>
+        <span><strong>No gifts</strong> · <span data-word-count>${wordCount(draft.text)} / ${MAX_MESSAGE_WORDS} words</span></span>
         <button class="primary" type="submit">Send response</button>
       </div>
     </form>
@@ -387,12 +392,18 @@ function selectConversation(conversationId) {
   state.activeConversationId = conversationId;
   renderWorkspace();
   $('#main-composer textarea')?.focus();
+  refreshWorkspace();
 }
 
 async function sendResponse(conversationId, text, preparedReplyId = null) {
   const cleaned = String(text || '').trim();
   if (!cleaned) {
     setStatus('Write or select an answer first.', 'error');
+    return;
+  }
+  const count = wordCount(cleaned);
+  if (count > MAX_MESSAGE_WORDS) {
+    setStatus(`Response may contain at most ${MAX_MESSAGE_WORDS} words. Current response has ${count}.`, 'error');
     return;
   }
   setStatus('Sending response...');
@@ -441,10 +452,26 @@ $('#logout').addEventListener('click', async () => {
 document.addEventListener('input', (event) => {
   const form = event.target.closest('[data-send-form]');
   if (!form) return;
+  const count = wordCount(form.elements.text.value);
+  const wordCountLabel = form.querySelector('[data-word-count]');
+  if (wordCountLabel) wordCountLabel.textContent = `${count} / ${MAX_MESSAGE_WORDS} words`;
   state.drafts.set(form.dataset.sendForm, {
     text: form.elements.text.value,
     preparedReplyId: form.elements.preparedReplyId.value || null
   });
+});
+
+document.addEventListener('keydown', (event) => {
+  if (
+    !event.target.matches('#main-composer textarea') ||
+    event.key !== 'Enter' ||
+    event.shiftKey ||
+    event.isComposing
+  ) {
+    return;
+  }
+  event.preventDefault();
+  event.target.closest('form')?.requestSubmit();
 });
 
 document.addEventListener('submit', async (event) => {
@@ -488,3 +515,11 @@ document.addEventListener('click', (event) => {
 });
 
 loadWorkspace({ preserveContext: false }).catch(() => {});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshWorkspace();
+});
+
+window.addEventListener('focus', () => {
+  refreshWorkspace();
+});

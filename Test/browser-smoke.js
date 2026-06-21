@@ -379,13 +379,17 @@ async function employeeFlow(browser) {
   );
   assert.equal(liveSent.status(), 201);
   await page.locator('#main-chat-history').getByText(liveIncomingText, { exact: true }).waitFor({
-    timeout: 7000
+    timeout: 3000
   });
+  const tooLongEmployeeText = Array.from({ length: 61 }, (_, index) => `word${index + 1}`).join(' ');
+  await page.locator('#main-composer textarea').fill(tooLongEmployeeText);
+  await page.locator('#main-composer textarea').press('Enter');
+  await page.getByText(/at most 60 words/i).waitFor();
   await page.locator('#panel-d .prepared-file').first().click();
   const composer = page.locator('#main-composer textarea');
   const insertedText = await composer.inputValue();
   assert.ok(insertedText.length > 20);
-  await page.getByRole('button', { name: 'Send response' }).click();
+  await composer.press('Enter');
   await page.getByText('Prepared Text', { exact: false }).last().waitFor();
 
   const historyResponse = await customerContext.request.get(

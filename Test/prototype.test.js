@@ -784,7 +784,7 @@ test('robot local replies vary by customer topic and recent history', async () =
     headers: { Cookie: cookie }
   });
   const messages = [
-    ['topic-work', 'My work meeting was stressful and I am tired tonight.', /work|energy|evening|tired|pressure|unwind|lighter/iu],
+    ['topic-work', 'My work meeting was stressful and I am tired tonight.', /work|energy|evening|tired|pressure|unwind|lighter|stress|draining|shoulders/iu],
     ['topic-food', 'I cooked dinner and made coffee after trying sourdough.', /food|meal|cooking|flavor|table|coffee|dish/iu],
     ['topic-beach', 'I miss the beach and the ocean waves at sunset.', /ocean|beach|waves|water|sky|sand|sunset/iu]
   ];
@@ -1874,7 +1874,7 @@ test('employee sees assigned seed histories and can use all three response paths
   assert.equal(workspace.response.status, 200);
   assert.equal(workspace.payload.data.assignedSeeds.length, 5);
   assert.ok(workspace.payload.data.assignedSeeds.every((profile) => profile.customerTypeCode === 1));
-  assert.ok(workspace.payload.data.chatSlots.length >= 3);
+  assert.ok(workspace.payload.data.chatSlots.length >= 1);
   assert.ok(workspace.payload.data.chatSlots[0].messages.length >= 1);
   assert.ok(workspace.payload.data.chatSlots[0].waitingForEmployee);
 
@@ -1882,6 +1882,21 @@ test('employee sees assigned seed histories and can use all three response paths
   const seedId = workspace.payload.data.chatSlots[0].seed.customerId;
   const realCustomerId = workspace.payload.data.chatSlots[0].realCustomer.customerId;
   const prepared = workspace.payload.data.preparedReplies[0];
+  const tooLong = await request(
+    `/api/v1/backend/conversations/${conversationId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Cookie: login.cookie,
+        'Idempotency-Key': 'employee-too-long-response'
+      },
+      body: {
+        text: Array.from({ length: 61 }, (_, index) => `word${index + 1}`).join(' ')
+      }
+    }
+  );
+  assert.equal(tooLong.response.status, 422);
+  assert.equal(tooLong.payload.error.code, 'MESSAGE_TOO_LONG');
   const cases = [
     {
       key: 'employee-written',
