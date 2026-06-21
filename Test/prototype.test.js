@@ -1927,6 +1927,63 @@ test('employee sees assigned seed histories and can use all three response paths
   }
 });
 
+test('employee workspace returns the latest seed conversation messages', async () => {
+  const registered = await request('/api/v1/auth/customer/register', {
+    method: 'POST',
+    body: {
+      email: `latest-employee-chat-${randomUUID()}@example.test`,
+      password: 'Password123!',
+      displayName: 'Latest Riley',
+      birthDate: '1990-06-08',
+      sex: 'Woman',
+      countryCode: 'US',
+      state: 'OR',
+      city: 'Portland'
+    }
+  });
+  assert.equal(registered.response.status, 201);
+  app.db.prepare('UPDATE CustomerProfile SET CreditsRemain = 500 WHERE CustomerId = ?')
+    .run(registered.payload.data.customerId);
+  const seed = customerByDisplayName('Maya');
+  const conversation = await request(`/api/v1/customer/conversations/with/${seed.customerId}`, {
+    method: 'POST',
+    headers: { Cookie: registered.cookie }
+  });
+  assert.equal(conversation.response.status, 200);
+
+  for (let index = 1; index <= 25; index += 1) {
+    const message = await request(
+      `/api/v1/customer/conversations/${conversation.payload.data.conversationId}/messages/text`,
+      {
+        method: 'POST',
+        headers: {
+          Cookie: registered.cookie,
+          'Idempotency-Key': `employee-latest-message-${index}`
+        },
+        body: { text: `Employee latest message ${String(index).padStart(2, '0')}` }
+      }
+    );
+    assert.equal(message.response.status, 201);
+  }
+
+  const employeeCookie = await loginStaff('operator@datingeasy.test');
+  const workspace = await request('/api/v1/backend/workspace', {
+    headers: { Cookie: employeeCookie }
+  });
+  assert.equal(workspace.response.status, 200);
+  const slot = workspace.payload.data.chatSlots.find(
+    (item) => item.conversationId === conversation.payload.data.conversationId
+  );
+  assert.ok(slot);
+  assert.equal(slot.messages.length, 20);
+  assert.equal(slot.messages[0].text, 'Employee latest message 06');
+  assert.equal(slot.messages.at(-1).text, 'Employee latest message 25');
+  assert.equal(
+    slot.messages.some((message) => message.text === 'Employee latest message 01'),
+    false
+  );
+});
+
 test('employee and administrator routes enforce role separation', async () => {
   const employeeLogin = await request('/api/v1/auth/staff/login', {
     method: 'POST',

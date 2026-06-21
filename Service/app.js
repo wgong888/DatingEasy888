@@ -2780,10 +2780,13 @@ function createApplication(options = {}) {
         let waitingCount = 0;
         for (const conversation of conversations) {
           const messages = db.prepare(`
-            SELECT * FROM ChatRecords
-            WHERE ConversationId = ?
-            ORDER BY ChatTime ASC
-            LIMIT 20
+            SELECT * FROM (
+              SELECT ChatRecords.*, rowid AS RowOrder FROM ChatRecords
+              WHERE ConversationId = ?
+              ORDER BY ChatTime DESC, rowid DESC
+              LIMIT 20
+            )
+            ORDER BY ChatTime ASC, RowOrder ASC
           `).all(conversation.ConversationId);
           const latest = messages.at(-1);
           const waitingForEmployee = Boolean(

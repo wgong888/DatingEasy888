@@ -4,8 +4,12 @@ const state = {
   workspace: null,
   selectedSeedId: null,
   activeConversationId: null,
-  drafts: new Map()
+  drafts: new Map(),
+  liveRefreshTimer: null,
+  refreshInFlight: false
 };
+
+const LIVE_REFRESH_MS = 1500;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -305,6 +309,72 @@ async function loadWorkspace({ preserveContext = true } = {}) {
   state.selectedSeedId = priorSeed;
   state.activeConversationId = priorConversation;
   renderWorkspace();
+  startLiveRefresh();
+}
+
+function captureComposerSnapshot() {
+  const form = $('#main-composer');
+  const textarea = $('#main-composer textarea');
+  if (!form || !textarea) return null;
+  state.drafts.set(form.dataset.sendForm, {
+    text: textarea.value,
+    preparedReplyId: form.elements.preparedReplyId.value || null
+  });
+  return {
+    conversationId: form.dataset.sendForm,
+    focused: document.activeElement === textarea,
+    selectionStart: textarea.selectionStart,
+    selectionEnd: textarea.selectionEnd
+  };
+}
+
+function restoreComposerSnapshot(snapshot) {
+  if (!snapshot?.focused || snapshot.conversationId !== state.activeConversationId) return;
+  requestAnimationFrame(() => {
+    const textarea = $('#main-composer textarea');
+    if (!textarea) return;
+    textarea.focus();
+    const start = Math.min(snapshot.selectionStart, textarea.value.length);
+    const end = Math.min(snapshot.selectionEnd, textarea.value.length);
+    textarea.setSelectionRange(start, end);
+  });
+}
+
+async function refreshWorkspace() {
+  if (
+    state.refreshInFlight ||
+    !state.workspace ||
+    document.hidden ||
+    $('#workspace-view').classList.contains('hidden')
+  ) {
+    return;
+  }
+  state.refreshInFlight = true;
+  const snapshot = captureComposerSnapshot();
+  try {
+    await loadWorkspace();
+    restoreComposerSnapshot(snapshot);
+  } catch (error) {
+    if (error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN') {
+      stopLiveRefresh();
+      state.workspace = null;
+      $('#workspace-view').classList.add('hidden');
+      $('#login-view').classList.remove('hidden');
+    }
+  } finally {
+    state.refreshInFlight = false;
+  }
+}
+
+function startLiveRefresh() {
+  if (state.liveRefreshTimer) return;
+  state.liveRefreshTimer = setInterval(refreshWorkspace, LIVE_REFRESH_MS);
+}
+
+function stopLiveRefresh() {
+  if (!state.liveRefreshTimer) return;
+  clearInterval(state.liveRefreshTimer);
+  state.liveRefreshTimer = null;
 }
 
 function selectSeed(seedId) {
@@ -358,6 +428,7 @@ $('#staff-login-form').addEventListener('submit', async (event) => {
 });
 
 $('#logout').addEventListener('click', async () => {
+  stopLiveRefresh();
   await api('/api/v1/auth/logout', { method: 'POST' });
   state.workspace = null;
   state.selectedSeedId = null;

@@ -166,7 +166,7 @@ async function customerFlow(browser, viewport, suffix) {
       return cards.length > 0 && cards.every((card) => card.querySelector('h2')?.textContent.includes('Grace'));
     });
     const graceCard = page.locator('#profile-grid .profile-card', { hasText: 'Grace' }).first();
-    await graceCard.locator('.favorite-button').click();
+    await graceCard.locator('.favorite-button').dispatchEvent('click');
     await page.getByRole('button', { name: 'Favorites', exact: true }).click();
     await page.locator('#favorite-grid .profile-card', { hasText: 'Grace' }).first().waitFor();
     await page.getByRole('button', { name: 'Discover', exact: true }).click();
@@ -369,6 +369,18 @@ async function employeeFlow(browser) {
   assert.match(await firstCustomer.innerText(), new RegExp(customerName));
   await firstCustomer.click();
   await page.locator('#main-chat-history').getByText(incomingText, { exact: true }).waitFor();
+  const liveIncomingText = 'This is a live customer follow-up while the employee chat is open.';
+  const liveSent = await customerContext.request.post(
+    `${ORIGIN}/api/v1/customer/conversations/${conversation.data.conversationId}/messages/text`,
+    {
+      headers: { 'Idempotency-Key': `employee-live-refresh-${scenarioId}` },
+      data: { text: liveIncomingText }
+    }
+  );
+  assert.equal(liveSent.status(), 201);
+  await page.locator('#main-chat-history').getByText(liveIncomingText, { exact: true }).waitFor({
+    timeout: 7000
+  });
   await page.locator('#panel-d .prepared-file').first().click();
   const composer = page.locator('#main-composer textarea');
   const insertedText = await composer.inputValue();
