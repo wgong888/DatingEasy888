@@ -9,7 +9,8 @@ const state = {
   workspaceRefreshTimer: null,
   keepaliveTimer: null,
   messageRefreshInFlight: false,
-  workspaceRefreshInFlight: false
+  workspaceRefreshInFlight: false,
+  sendingConversationIds: new Set()
 };
 
 const MAX_MESSAGE_WORDS = 60;
@@ -207,6 +208,19 @@ function renderMessage(message, slot) {
   `;
 }
 
+function appendMessageToSlot(conversationId, message) {
+  if (!state.workspace) return null;
+  const slot = state.workspace.chatSlots.find((item) => item.conversationId === conversationId);
+  if (!slot) return null;
+  if (!slot.messages.some((item) => item.chatRecordId === message.chatRecordId)) {
+    slot.messages.push(message);
+  }
+  slot.updatedAt = message.chatTime;
+  slot.waitingForEmployee = message.senderId !== slot.seed.customerId;
+  slot.status = slot.waitingForEmployee ? 'Waiting for response' : 'Responded';
+  return slot;
+}
+
 function renderMainChatHistory(slot) {
   const history = $('#main-chat-history');
   if (!history) return;
@@ -220,6 +234,7 @@ function renderMainChatHistory(slot) {
 }
 
 function updateComposerWordCount(form) {
+  if (!form) return;
   const count = wordCount(form.elements.text.value);
   const wordCountLabel = form.querySelector('[data-word-count]');
   if (wordCountLabel) wordCountLabel.textContent = `${count} / ${MAX_MESSAGE_WORDS} words`;
@@ -233,21 +248,26 @@ function sendComposerForm(form) {
   );
 }
 
+function handleComposerReturn(event, form) {
+  const enterPressed =
+    event.key === 'Enter' ||
+    event.key === 'Return' ||
+    event.code === 'Enter' ||
+    event.code === 'NumpadEnter' ||
+    event.inputType === 'insertLineBreak' ||
+    event.inputType === 'insertParagraph';
+  if (!enterPressed || event.shiftKey || event.isComposing) return;
+  event.preventDefault();
+  event.stopPropagation();
+  sendComposerForm(form);
+}
+
 function bindComposerEvents() {
   const form = $('#main-composer');
   const textarea = $('#main-composer textarea');
   if (!form || !textarea) return;
-  textarea.addEventListener('keydown', (event) => {
-    const enterPressed =
-      event.key === 'Enter' ||
-      event.key === 'Return' ||
-      event.code === 'Enter' ||
-      event.code === 'NumpadEnter';
-    if (!enterPressed || event.shiftKey || event.isComposing) return;
-    event.preventDefault();
-    event.stopPropagation();
-    sendComposerForm(form);
-  });
+  textarea.addEventListener('keydown', (event) => handleComposerReturn(event, form), true);
+  textarea.addEventListener('beforeinput', (event) => handleComposerReturn(event, form), true);
   textarea.addEventListener('input', () => {
     updateComposerWordCount(form);
     state.drafts.set(form.dataset.sendForm, {
@@ -528,6 +548,7 @@ function selectConversation(conversationId) {
 }
 
 async function sendResponse(conversationId, text, preparedReplyId = null) {
+  if (state.sendingConversationIds.has(conversationId)) return;
   const cleaned = String(text || '').trim();
   if (!cleaned) {
     setStatus('Write or select an answer first.', 'error');
@@ -538,6 +559,7 @@ async function sendResponse(conversationId, text, preparedReplyId = null) {
     setStatus(`Response may contain at most ${MAX_MESSAGE_WORDS} words. Current response has ${count}.`, 'error');
     return;
   }
+  state.sendingConversationIds.add(conversationId);
   setStatus('Sending response...');
   try {
     const result = await api(
@@ -549,11 +571,21 @@ async function sendResponse(conversationId, text, preparedReplyId = null) {
       }
     );
     state.drafts.delete(conversationId);
+    const slot = appendMessageToSlot(conversationId, result);
+    if (slot) {
+      renderCustomerList();
+      renderConversationState(slot);
+      renderMainChatHistory(slot);
+      $('#main-composer textarea').value = '';
+      updateComposerWordCount($('#main-composer'));
+    }
+    setStatus(`Sent as ${selectedSeed()?.displayName || 'the selected seed'} · ${result.responseSource}`, 'success');
     await refreshActiveConversation();
     await refreshWorkspace();
-    setStatus(`Sent as ${selectedSeed()?.displayName || 'the selected seed'} · ${result.responseSource}`, 'success');
   } catch (error) {
     setStatus(error.message, 'error');
+  } finally {
+    state.sendingConversationIds.delete(conversationId);
   }
 }
 
@@ -594,23 +626,17 @@ document.addEventListener('input', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
-  const enterPressed =
-    event.key === 'Enter' ||
-    event.key === 'Return' ||
-    event.code === 'Enter' ||
-    event.code === 'NumpadEnter';
-  if (
-    !event.target.matches('#main-composer textarea') ||
-    !enterPressed ||
-    event.shiftKey ||
-    event.isComposing
-  ) {
-    return;
-  }
-  event.preventDefault();
   const form = event.target.closest('form');
-  if (form) sendComposerForm(form);
-});
+  if (!event.target.matches('#main-composer textarea') || !form) return;
+  handleComposerReturn(event, form);
+}, true);
+
+document.addEventListener('beforeinput', (event) => {
+  if (event.defaultPrevented) return;
+  const form = event.target.closest('form');
+  if (!event.target.matches('#main-composer textarea') || !form) return;
+  handleComposerReturn(event, form);
+}, true);
 
 document.addEventListener('submit', async (event) => {
   const form = event.target.closest('[data-send-form]');

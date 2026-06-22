@@ -389,7 +389,11 @@ async function employeeFlow(browser) {
   const composer = page.locator('#main-composer textarea');
   const insertedText = await composer.inputValue();
   assert.ok(insertedText.length > 20);
-  await composer.press('Enter');
+  await composer.evaluate((textarea) => textarea.dispatchEvent(new InputEvent('beforeinput', {
+    bubbles: true,
+    cancelable: true,
+    inputType: 'insertLineBreak'
+  })));
   await page.getByText('Prepared Text', { exact: false }).last().waitFor();
 
   const historyResponse = await customerContext.request.get(
