@@ -347,7 +347,7 @@ function renderMainChat() {
       <textarea
         name="text"
         rows="2"
-        maxlength="600"
+        maxlength="4000"
         autocomplete="off"
         aria-label="Reply as ${escapeHtml(seed.displayName)} to ${escapeHtml(slot.realCustomer.displayName)}"
         placeholder="Write as ${escapeHtml(seed.displayName)}..."

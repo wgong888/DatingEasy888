@@ -413,7 +413,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .gift-button .gift-icon { font-size: 12px; line-height: 1; }
 .gift-button strong { color: var(--coral-dark); font-size: 9px; }
 .composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; border-top: 1px solid var(--line); padding: 12px; }
-.composer textarea { min-height: 48px; max-height: 120px; resize: vertical; padding: 12px; }
+.composer textarea { min-height: 48px; max-height: 120px; overflow-y: auto; resize: none; padding: 12px; white-space: pre-wrap; }
 .composer-meta { grid-column: 1 / -1; display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
 .composer-credit-warning {
   grid-column: 1 / -1;

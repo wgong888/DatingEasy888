@@ -23,6 +23,7 @@ const state = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const MESSAGE_CREDIT_COST = 5;
+const MAX_MESSAGE_WORDS = 60;
 
 const CONFIGURED_SERVICE_ORIGIN = localStorage.getItem('datingeasyServiceOrigin');
 const DEFAULT_LOCAL_SERVICE_ORIGIN = 'http://127.0.0.1:4173';
@@ -93,6 +94,16 @@ function showToast(message) {
   toast.classList.add('show');
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => toast.classList.remove('show'), 2800);
+}
+
+function wordCount(text) {
+  return String(text || '').trim().split(/\s+/u).filter(Boolean).length;
+}
+
+function resizeComposerTextBox(textarea) {
+  if (!textarea) return;
+  textarea.style.height = 'auto';
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function pulseButton(button) {
@@ -607,7 +618,7 @@ async function openConversation(conversationId) {
       ${renderChatMessages(data.messages)}
     </div>
     <form class="composer" data-composer>
-      <textarea name="text" maxlength="500" placeholder="Write up to 60 words" aria-label="Message" required></textarea>
+      <textarea name="text" maxlength="4000" placeholder="Write up to 60 words" aria-label="Message" required></textarea>
       <button class="primary-button" type="submit" data-send-message>Send</button>
       <div class="composer-credit-warning ${state.me.creditBalance >= MESSAGE_CREDIT_COST ? 'hidden' : ''}" data-credit-warning>
         <span>Not enough credits to send. Add credits to keep chatting.</span>
@@ -617,6 +628,7 @@ async function openConversation(conversationId) {
     ${renderGiftStrip()}
   `;
   updateComposerCreditState($('[data-composer]', panel));
+  resizeComposerTextBox($('[data-composer] textarea', panel));
   requestAnimationFrame(() => {
     const messages = $('.chat-messages', panel);
     messages.scrollTop = messages.scrollHeight;
@@ -664,6 +676,12 @@ function clearActiveChatFollowups() {
 async function sendMessage(form) {
   const text = new FormData(form).get('text').trim();
   if (!text) return;
+  const count = wordCount(text);
+  if (count > MAX_MESSAGE_WORDS) {
+    showToast(`Messages may contain at most ${MAX_MESSAGE_WORDS} words. Current message has ${count}.`);
+    resizeComposerTextBox($('textarea', form));
+    return;
+  }
   if (form.dataset.sending === 'true') return;
   if (Number(state.me?.creditBalance || 0) < MESSAGE_CREDIT_COST) {
     updateComposerCreditState(form);
@@ -685,6 +703,7 @@ async function sendMessage(form) {
     );
     setBalance(result.creditBalance);
     form.reset();
+    resizeComposerTextBox($('textarea', form));
     await openConversation(conversationId);
     await loadConversations();
     scheduleActiveChatFollowups();
@@ -1097,24 +1116,37 @@ document.addEventListener('submit', (event) => {
   sendMessage(event.target).catch((error) => showToast(error.message));
 });
 
-document.addEventListener('keydown', (event) => {
+function handleCustomerComposerReturn(event) {
   if (
     !event.target.matches('.composer textarea') ||
-    event.key !== 'Enter' ||
+    !(
+      event.key === 'Enter' ||
+      event.key === 'Return' ||
+      event.code === 'Enter' ||
+      event.code === 'NumpadEnter' ||
+      event.inputType === 'insertLineBreak' ||
+      event.inputType === 'insertParagraph'
+    ) ||
     event.shiftKey ||
     event.isComposing
   ) {
     return;
   }
   event.preventDefault();
-  event.target.closest('form').requestSubmit();
-});
+  event.stopPropagation();
+  sendMessage(event.target.closest('form')).catch((error) => showToast(error.message));
+}
+
+document.addEventListener('keydown', handleCustomerComposerReturn, true);
+
+document.addEventListener('beforeinput', handleCustomerComposerReturn, true);
 
 document.addEventListener('input', (event) => {
   if (!event.target.matches('.composer textarea')) return;
-  const count = event.target.value.trim().split(/\s+/).filter(Boolean).length;
+  resizeComposerTextBox(event.target);
+  const count = wordCount(event.target.value);
   const wordCountLabel = $('[data-word-count]', event.target.closest('form'));
-  if (wordCountLabel) wordCountLabel.textContent = `${count} / 60 words`;
+  if (wordCountLabel) wordCountLabel.textContent = `${count} / ${MAX_MESSAGE_WORDS} words`;
 });
 
 $('#credit-purchase-form').addEventListener('submit', (event) => {

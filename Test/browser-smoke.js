@@ -106,6 +106,23 @@ async function customerFlow(browser, viewport, suffix) {
       return Boolean(composer && gifts && composer.compareDocumentPosition(gifts) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
     assert.equal(chatOrder, true);
+    const tooLongCustomerText = Array.from({ length: 61 }, (_, index) => `customerword${index + 1}`).join(' ');
+    await page.locator('[data-composer] textarea').fill(tooLongCustomerText);
+    const customerComposerShape = await page.locator('[data-composer] textarea').evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      minHeight: Number.parseFloat(getComputedStyle(element).minHeight)
+    }));
+    assert.ok(
+      customerComposerShape.height > customerComposerShape.minHeight,
+      'customer composer should auto-fit wrapped lines'
+    );
+    await page.locator('[data-composer] textarea').press('Enter');
+    await page.locator('#toast.show', { hasText: /at most 60 words/i }).waitFor();
+    assert.equal(
+      await page.locator('[data-composer] textarea').evaluate((element) => element.value.includes('\n')),
+      false,
+      'customer Enter should send instead of inserting a new line'
+    );
     await page.locator('[data-composer] textarea').fill(
       'The Enter key should send this second Arfa message.'
     );
