@@ -255,6 +255,12 @@ function updateComposerWordCount(form) {
   if (wordCountLabel) wordCountLabel.textContent = `${count} / ${MAX_MESSAGE_WORDS} words`;
 }
 
+function resizeComposerTextBox(input) {
+  if (!input) return;
+  input.style.height = 'auto';
+  input.style.height = `${input.scrollHeight}px`;
+}
+
 function sendComposerForm(form) {
   return sendResponse(
     form.dataset.sendForm,
@@ -285,11 +291,13 @@ function bindComposerEvents() {
   input.addEventListener('beforeinput', (event) => handleComposerReturn(event, form), true);
   input.addEventListener('input', () => {
     updateComposerWordCount(form);
+    resizeComposerTextBox(input);
     state.drafts.set(form.dataset.sendForm, {
       text: form.elements.text.value,
       preparedReplyId: form.elements.preparedReplyId.value || null
     });
   });
+  resizeComposerTextBox(input);
 }
 
 function renderConversationState(slot) {
@@ -336,15 +344,14 @@ function renderMainChat() {
     </header>
     <div id="main-chat-history" class="main-chat-history"></div>
     <form id="main-composer" class="main-composer" data-send-form="${slot.conversationId}">
-      <input
+      <textarea
         name="text"
-        type="text"
+        rows="2"
         maxlength="600"
         autocomplete="off"
         aria-label="Reply as ${escapeHtml(seed.displayName)} to ${escapeHtml(slot.realCustomer.displayName)}"
         placeholder="Write as ${escapeHtml(seed.displayName)}..."
-        value="${escapeHtml(draft.text)}"
-      >
+      >${escapeHtml(draft.text)}</textarea>
       <input name="preparedReplyId" type="hidden" value="${escapeHtml(draft.preparedReplyId || '')}">
       <div class="composer-footer">
         <span><strong>No gifts</strong> · <span data-word-count>${wordCount(draft.text)} / ${MAX_MESSAGE_WORDS} words</span></span>
@@ -444,6 +451,7 @@ function restoreComposerSnapshot(snapshot) {
     const start = Math.min(snapshot.selectionStart, input.value.length);
     const end = Math.min(snapshot.selectionEnd, input.value.length);
     input.setSelectionRange(start, end);
+    resizeComposerTextBox(input);
   });
 }
 
@@ -614,7 +622,9 @@ async function sendResponse(conversationId, text, preparedReplyId = null) {
       renderCustomerList();
       renderConversationState(slot);
       renderMainChatHistory(slot);
-      $('#main-composer [name="text"]').value = '';
+      const composerInput = $('#main-composer [name="text"]');
+      composerInput.value = '';
+      resizeComposerTextBox(composerInput);
       updateComposerWordCount($('#main-composer'));
     }
     setStatus(`Sent as ${selectedSeed()?.displayName || 'the selected seed'} · ${result.responseSource}`, 'success');

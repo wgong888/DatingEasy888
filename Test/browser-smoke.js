@@ -383,8 +383,23 @@ async function employeeFlow(browser) {
   });
   const tooLongEmployeeText = Array.from({ length: 61 }, (_, index) => `word${index + 1}`).join(' ');
   await page.locator('#main-composer [name="text"]').fill(tooLongEmployeeText);
+  const employeeComposerShape = await page.locator('#main-composer [name="text"]').evaluate((element) => ({
+    tagName: element.tagName,
+    height: element.getBoundingClientRect().height,
+    minHeight: Number.parseFloat(getComputedStyle(element).minHeight)
+  }));
+  assert.equal(employeeComposerShape.tagName, 'TEXTAREA');
+  assert.ok(
+    employeeComposerShape.height > employeeComposerShape.minHeight,
+    'employee composer should auto-fit wrapped lines'
+  );
   await page.locator('#main-composer [name="text"]').press('Enter');
   await page.getByText(/at most 60 words/i).waitFor();
+  assert.equal(
+    await page.locator('#main-composer [name="text"]').evaluate((element) => element.value.includes('\n')),
+    false,
+    'Enter should send instead of inserting a new line'
+  );
   await page.locator('#panel-d .prepared-file').first().click();
   const composer = page.locator('#main-composer [name="text"]');
   const insertedText = await composer.inputValue();
