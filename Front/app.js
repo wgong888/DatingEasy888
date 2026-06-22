@@ -618,7 +618,7 @@ async function openConversation(conversationId) {
       ${renderChatMessages(data.messages)}
     </div>
     <form class="composer" data-composer>
-      <textarea name="text" maxlength="4000" placeholder="Write up to 60 words" aria-label="Message" required></textarea>
+      <textarea name="text" maxlength="4000" placeholder="Write up to 60 words" aria-label="Message" enterkeyhint="send" required></textarea>
       <button class="primary-button" type="submit" data-send-message>Send</button>
       <div class="composer-credit-warning ${state.me.creditBalance >= MESSAGE_CREDIT_COST ? 'hidden' : ''}" data-credit-warning>
         <span>Not enough credits to send. Add credits to keep chatting.</span>
@@ -674,7 +674,7 @@ function clearActiveChatFollowups() {
 }
 
 async function sendMessage(form) {
-  const text = new FormData(form).get('text').trim();
+  const text = String(new FormData(form).get('text') || '').replace(/[\r\n]+/gu, ' ').trim();
   if (!text) return;
   const count = wordCount(text);
   if (count > MAX_MESSAGE_WORDS) {
@@ -744,6 +744,14 @@ async function sendGift(giftId) {
       throw error;
     }
   }
+}
+
+function sendComposerAfterInsertedReturn(textarea) {
+  if (!/[\r\n]/u.test(textarea.value)) return false;
+  textarea.value = textarea.value.replace(/[\r\n]+/gu, ' ');
+  resizeComposerTextBox(textarea);
+  sendMessage(textarea.closest('form')).catch((error) => showToast(error.message));
+  return true;
 }
 
 async function loadLedger() {
@@ -1143,6 +1151,7 @@ document.addEventListener('beforeinput', handleCustomerComposerReturn, true);
 
 document.addEventListener('input', (event) => {
   if (!event.target.matches('.composer textarea')) return;
+  if (sendComposerAfterInsertedReturn(event.target)) return;
   resizeComposerTextBox(event.target);
   const count = wordCount(event.target.value);
   const wordCountLabel = $('[data-word-count]', event.target.closest('form'));

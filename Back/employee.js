@@ -264,9 +264,22 @@ function resizeComposerTextBox(input) {
 function sendComposerForm(form) {
   return sendResponse(
     form.dataset.sendForm,
-    form.elements.text.value,
+    form.elements.text.value.replace(/[\r\n]+/gu, ' '),
     form.elements.preparedReplyId.value || null
   );
+}
+
+function sendComposerAfterInsertedReturn(input, form) {
+  if (!/[\r\n]/u.test(input.value)) return false;
+  input.value = input.value.replace(/[\r\n]+/gu, ' ');
+  updateComposerWordCount(form);
+  resizeComposerTextBox(input);
+  state.drafts.set(form.dataset.sendForm, {
+    text: form.elements.text.value,
+    preparedReplyId: form.elements.preparedReplyId.value || null
+  });
+  sendComposerForm(form);
+  return true;
 }
 
 function handleComposerReturn(event, form) {
@@ -290,6 +303,7 @@ function bindComposerEvents() {
   input.addEventListener('keydown', (event) => handleComposerReturn(event, form), true);
   input.addEventListener('beforeinput', (event) => handleComposerReturn(event, form), true);
   input.addEventListener('input', () => {
+    if (sendComposerAfterInsertedReturn(input, form)) return;
     updateComposerWordCount(form);
     resizeComposerTextBox(input);
     state.drafts.set(form.dataset.sendForm, {
@@ -349,13 +363,14 @@ function renderMainChat() {
         rows="2"
         maxlength="4000"
         autocomplete="off"
+        enterkeyhint="send"
         aria-label="Reply as ${escapeHtml(seed.displayName)} to ${escapeHtml(slot.realCustomer.displayName)}"
         placeholder="Write as ${escapeHtml(seed.displayName)}..."
       >${escapeHtml(draft.text)}</textarea>
       <input name="preparedReplyId" type="hidden" value="${escapeHtml(draft.preparedReplyId || '')}">
       <div class="composer-footer">
         <span><strong>No gifts</strong> · <span data-word-count>${wordCount(draft.text)} / ${MAX_MESSAGE_WORDS} words</span></span>
-        <button class="primary" type="submit">Send response</button>
+        <button class="primary" type="submit">Send</button>
       </div>
     </form>
   `;
@@ -667,7 +682,7 @@ document.addEventListener('input', (event) => {
   if (!form) return;
   updateComposerWordCount(form);
   state.drafts.set(form.dataset.sendForm, {
-    text: form.elements.text.value,
+    text: form.elements.text.value.replace(/[\r\n]+/gu, ' '),
     preparedReplyId: form.elements.preparedReplyId.value || null
   });
 });

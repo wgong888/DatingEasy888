@@ -123,12 +123,19 @@ async function customerFlow(browser, viewport, suffix) {
       false,
       'customer Enter should send instead of inserting a new line'
     );
-    await page.locator('[data-composer] textarea').fill(
-      'The Enter key should send this second Arfa message.'
-    );
-    await page.locator('[data-composer] textarea').press('Enter');
+    const customerReturnMessage = 'The Return key should send this second Arfa message.';
+    await page.locator('[data-composer] textarea').fill(customerReturnMessage);
+    await page.locator('[data-composer] textarea').evaluate((textarea) => {
+      textarea.value = `${textarea.value}\n`;
+      textarea.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        data: '\n',
+        inputType: 'insertLineBreak'
+      }));
+    });
     await page.locator('.message.outgoing', {
-      hasText: 'The Enter key should send this second Arfa message.'
+      hasText: customerReturnMessage
     }).waitFor();
     await page.locator('#credit-balance').filter({ hasText: '240' }).waitFor();
     await page.locator('[data-gift="1"]').click();
@@ -454,9 +461,20 @@ async function employeeFlow(browser) {
   await page.locator('#main-chat-history').getByText(alexHello, { exact: true }).waitFor({
     timeout: 3000
   });
-  await page.locator('#main-composer [name="text"]').fill('I got your Hello message.');
-  await page.locator('#main-composer [name="text"]').press('Enter');
-  await page.locator('#main-chat-history').getByText('I got your Hello message.', { exact: true }).waitFor();
+  await page.locator('#main-composer').getByRole('button', { name: 'Send', exact: true }).waitFor();
+  assert.equal(await page.locator('#main-composer').getByRole('button', { name: 'Send response' }).count(), 0);
+  const employeeReturnMessage = 'I got your Hello message.';
+  await page.locator('#main-composer [name="text"]').fill(employeeReturnMessage);
+  await page.locator('#main-composer [name="text"]').evaluate((textarea) => {
+    textarea.value = `${textarea.value}\n`;
+    textarea.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      data: '\n',
+      inputType: 'insertLineBreak'
+    }));
+  });
+  await page.locator('#main-chat-history').getByText(employeeReturnMessage, { exact: true }).waitFor();
 
   const historyResponse = await customerContext.request.get(
     `${ORIGIN}/api/v1/customer/conversations/${conversation.data.conversationId}/messages`
