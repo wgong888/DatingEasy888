@@ -2680,6 +2680,52 @@ function createApplication(options = {}) {
     }
 
     if (
+      req.method === 'GET' &&
+      (params = matchPath(pathname, '/api/v1/backend/conversations/:conversationId/events'))
+    ) {
+      const session = authenticate(db, req, 'Employee', { role: 'ChatEmployee' });
+      if (session.Role !== 'ChatEmployee') {
+        throw new ApiError(403, 'FORBIDDEN', 'Employee workspace access is required.');
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-store',
+        Connection: 'keep-alive',
+        'X-Content-Type-Options': 'nosniff'
+      });
+      let lastSignature = '';
+      let closed = false;
+      const sendSlot = () => {
+        if (closed) return;
+        try {
+          db.prepare('UPDATE Sessions SET LastActivityTime = ? WHERE SessionId = ?')
+            .run(now(), session.SessionId);
+          const slot = employeeConversationMessages(db, params.conversationId, session.PrincipalId);
+          const latest = slot.messages.at(-1);
+          const signature = `${latest?.chatRecordId || ''}:${slot.messages.length}:${slot.status}`;
+          if (signature !== lastSignature) {
+            lastSignature = signature;
+            res.write(`data: ${JSON.stringify(slot)}\n\n`);
+          } else {
+            res.write(': keepalive\n\n');
+          }
+        } catch {
+          closed = true;
+          clearInterval(timer);
+          res.end();
+        }
+      };
+      const timer = setInterval(sendSlot, 500);
+      timer.unref?.();
+      req.on('close', () => {
+        closed = true;
+        clearInterval(timer);
+      });
+      sendSlot();
+      return;
+    }
+
+    if (
       req.method === 'POST' &&
       (params = matchPath(pathname, '/api/v1/backend/conversations/:conversationId/messages'))
     ) {

@@ -382,11 +382,11 @@ async function employeeFlow(browser) {
     timeout: 3000
   });
   const tooLongEmployeeText = Array.from({ length: 61 }, (_, index) => `word${index + 1}`).join(' ');
-  await page.locator('#main-composer textarea').fill(tooLongEmployeeText);
-  await page.locator('#main-composer textarea').press('Enter');
+  await page.locator('#main-composer [name="text"]').fill(tooLongEmployeeText);
+  await page.locator('#main-composer [name="text"]').press('Enter');
   await page.getByText(/at most 60 words/i).waitFor();
   await page.locator('#panel-d .prepared-file').first().click();
-  const composer = page.locator('#main-composer textarea');
+  const composer = page.locator('#main-composer [name="text"]');
   const insertedText = await composer.inputValue();
   assert.ok(insertedText.length > 20);
   await composer.evaluate((textarea) => textarea.dispatchEvent(new InputEvent('beforeinput', {
@@ -395,6 +395,36 @@ async function employeeFlow(browser) {
     inputType: 'insertLineBreak'
   })));
   await page.getByText('Prepared Text', { exact: false }).last().waitFor();
+
+  const alexContext = await browser.newContext();
+  const alexLogin = await alexContext.request.post(`${ORIGIN}/api/v1/auth/customer/login`, {
+    data: { email: 'demo@datingeasy.test', password: 'Demo123!' }
+  });
+  assert.equal(alexLogin.status(), 200);
+  const alexConversationResponse = await alexContext.request.post(
+    `${ORIGIN}/api/v1/customer/conversations/with/${seed.customerId}`
+  );
+  assert.equal(alexConversationResponse.status(), 200);
+  const alexConversation = await alexConversationResponse.json();
+  await mayaRow.click();
+  const alexRow = page.locator('#panel-b .customer-row', { hasText: 'Alex' }).first();
+  await alexRow.waitFor();
+  await alexRow.click();
+  const alexHello = `Hello Maya from Alex ${scenarioId}`;
+  const alexHelloResponse = await alexContext.request.post(
+    `${ORIGIN}/api/v1/customer/conversations/${alexConversation.data.conversationId}/messages/text`,
+    {
+      headers: { 'Idempotency-Key': `alex-maya-hello-${scenarioId}` },
+      data: { text: alexHello }
+    }
+  );
+  assert.equal(alexHelloResponse.status(), 201);
+  await page.locator('#main-chat-history').getByText(alexHello, { exact: true }).waitFor({
+    timeout: 3000
+  });
+  await page.locator('#main-composer [name="text"]').fill('I got your Hello message.');
+  await page.locator('#main-composer [name="text"]').press('Enter');
+  await page.locator('#main-chat-history').getByText('I got your Hello message.', { exact: true }).waitFor();
 
   const historyResponse = await customerContext.request.get(
     `${ORIGIN}/api/v1/customer/conversations/${conversation.data.conversationId}/messages`
@@ -412,6 +442,7 @@ async function employeeFlow(browser) {
   await page.locator('#login-view:not(.hidden)').waitFor();
   await context.close();
   await customerContext.close();
+  await alexContext.close();
 }
 
 async function adminFlow(browser) {

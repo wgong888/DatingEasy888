@@ -111,7 +111,7 @@ input { min-height: 44px; }
 .main-message p { margin: 5px 0 0; font-size: 13px; line-height: 1.45; }
 .main-message small { display: block; margin-top: 6px; color: var(--teal); font-size: 8px; font-weight: 800; }
 .main-composer { border-top: 1px solid var(--line); padding: 10px; background: white; }
-.main-composer textarea { width: 100%; min-height: 88px; max-height: 150px; resize: vertical; font-size: 13px; line-height: 1.4; }
+.main-composer [name="text"] { width: 100%; min-height: 46px; font-size: 13px; line-height: 1.4; }
 .composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 7px; }
 .composer-footer span { color: var(--muted); font-size: 9px; }
 .composer-footer strong { color: var(--ink); }

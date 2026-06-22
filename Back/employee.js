@@ -8,6 +8,8 @@ const state = {
   messageRefreshTimer: null,
   workspaceRefreshTimer: null,
   keepaliveTimer: null,
+  activeEventSource: null,
+  eventSourceConversationId: null,
   messageRefreshInFlight: false,
   workspaceRefreshInFlight: false,
   sendingConversationIds: new Set()
@@ -233,6 +235,19 @@ function renderMainChatHistory(slot) {
   }
 }
 
+function applyUpdatedSlot(updatedSlot) {
+  if (!updatedSlot || updatedSlot.conversationId !== state.activeConversationId) return;
+  const current = activeConversation();
+  const currentLatest = latestMessage(current || {})?.chatRecordId || '';
+  const updatedLatest = latestMessage(updatedSlot)?.chatRecordId || '';
+  replaceChatSlot(updatedSlot);
+  if (currentLatest !== updatedLatest || current?.status !== updatedSlot.status) {
+    renderCustomerList();
+    renderConversationState(updatedSlot);
+    renderMainChatHistory(updatedSlot);
+  }
+}
+
 function updateComposerWordCount(form) {
   if (!form) return;
   const count = wordCount(form.elements.text.value);
@@ -264,11 +279,11 @@ function handleComposerReturn(event, form) {
 
 function bindComposerEvents() {
   const form = $('#main-composer');
-  const textarea = $('#main-composer textarea');
-  if (!form || !textarea) return;
-  textarea.addEventListener('keydown', (event) => handleComposerReturn(event, form), true);
-  textarea.addEventListener('beforeinput', (event) => handleComposerReturn(event, form), true);
-  textarea.addEventListener('input', () => {
+  const input = $('#main-composer [name="text"]');
+  if (!form || !input) return;
+  input.addEventListener('keydown', (event) => handleComposerReturn(event, form), true);
+  input.addEventListener('beforeinput', (event) => handleComposerReturn(event, form), true);
+  input.addEventListener('input', () => {
     updateComposerWordCount(form);
     state.drafts.set(form.dataset.sendForm, {
       text: form.elements.text.value,
@@ -288,10 +303,12 @@ function renderMainChat() {
   const slot = activeConversation();
   const seed = selectedSeed();
   if (!seed) {
+    stopConversationStream();
     $('#main-chat').innerHTML = '<div class="main-chat-empty">Select an active seed in Panel A.</div>';
     return;
   }
   if (!slot) {
+    stopConversationStream();
     $('#main-chat').innerHTML = `
       <div class="main-chat-empty">
         <strong>${escapeHtml(seed.displayName)} is selected</strong>
@@ -319,13 +336,15 @@ function renderMainChat() {
     </header>
     <div id="main-chat-history" class="main-chat-history"></div>
     <form id="main-composer" class="main-composer" data-send-form="${slot.conversationId}">
-      <textarea
+      <input
         name="text"
-        rows="4"
+        type="text"
         maxlength="600"
+        autocomplete="off"
         aria-label="Reply as ${escapeHtml(seed.displayName)} to ${escapeHtml(slot.realCustomer.displayName)}"
         placeholder="Write as ${escapeHtml(seed.displayName)}..."
-      >${escapeHtml(draft.text)}</textarea>
+        value="${escapeHtml(draft.text)}"
+      >
       <input name="preparedReplyId" type="hidden" value="${escapeHtml(draft.preparedReplyId || '')}">
       <div class="composer-footer">
         <span><strong>No gifts</strong> · <span data-word-count>${wordCount(draft.text)} / ${MAX_MESSAGE_WORDS} words</span></span>
@@ -335,6 +354,7 @@ function renderMainChat() {
   `;
   renderMainChatHistory(slot);
   bindComposerEvents();
+  startConversationStream(slot.conversationId);
   requestAnimationFrame(() => {
     const history = $('#main-chat-history');
     history.scrollTop = history.scrollHeight;
@@ -401,29 +421,29 @@ async function loadWorkspace({ preserveContext = true } = {}) {
 
 function captureComposerSnapshot() {
   const form = $('#main-composer');
-  const textarea = $('#main-composer textarea');
-  if (!form || !textarea) return null;
+  const input = $('#main-composer [name="text"]');
+  if (!form || !input) return null;
   state.drafts.set(form.dataset.sendForm, {
-    text: textarea.value,
+    text: input.value,
     preparedReplyId: form.elements.preparedReplyId.value || null
   });
   return {
     conversationId: form.dataset.sendForm,
-    focused: document.activeElement === textarea,
-    selectionStart: textarea.selectionStart,
-    selectionEnd: textarea.selectionEnd
+    focused: document.activeElement === input,
+    selectionStart: input.selectionStart,
+    selectionEnd: input.selectionEnd
   };
 }
 
 function restoreComposerSnapshot(snapshot) {
   if (!snapshot?.focused || snapshot.conversationId !== state.activeConversationId) return;
   requestAnimationFrame(() => {
-    const textarea = $('#main-composer textarea');
-    if (!textarea) return;
-    textarea.focus();
-    const start = Math.min(snapshot.selectionStart, textarea.value.length);
-    const end = Math.min(snapshot.selectionEnd, textarea.value.length);
-    textarea.setSelectionRange(start, end);
+    const input = $('#main-composer [name="text"]');
+    if (!input) return;
+    input.focus();
+    const start = Math.min(snapshot.selectionStart, input.value.length);
+    const end = Math.min(snapshot.selectionEnd, input.value.length);
+    input.setSelectionRange(start, end);
   });
 }
 
@@ -486,6 +506,7 @@ function stopLiveRefresh() {
   state.messageRefreshTimer = null;
   state.workspaceRefreshTimer = null;
   state.keepaliveTimer = null;
+  stopConversationStream();
 }
 
 function replaceChatSlot(updatedSlot) {
@@ -511,16 +532,7 @@ async function refreshActiveConversation() {
     const updatedSlot = await api(
       `/api/v1/backend/conversations/${encodeURIComponent(state.activeConversationId)}/messages`
     );
-    if (updatedSlot.conversationId !== state.activeConversationId) return;
-    const current = activeConversation();
-    const currentLatest = latestMessage(current || {})?.chatRecordId || '';
-    const updatedLatest = latestMessage(updatedSlot)?.chatRecordId || '';
-    replaceChatSlot(updatedSlot);
-    if (currentLatest !== updatedLatest || current?.status !== updatedSlot.status) {
-      renderCustomerList();
-      renderConversationState(updatedSlot);
-      renderMainChatHistory(updatedSlot);
-    }
+    applyUpdatedSlot(updatedSlot);
   } catch (error) {
     if (error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN') {
       stopLiveRefresh();
@@ -533,6 +545,32 @@ async function refreshActiveConversation() {
   }
 }
 
+function stopConversationStream() {
+  if (state.activeEventSource) state.activeEventSource.close();
+  state.activeEventSource = null;
+  state.eventSourceConversationId = null;
+}
+
+function startConversationStream(conversationId) {
+  if (!conversationId || state.eventSourceConversationId === conversationId) return;
+  stopConversationStream();
+  const source = new EventSource(
+    `/api/v1/backend/conversations/${encodeURIComponent(conversationId)}/events`
+  );
+  state.activeEventSource = source;
+  state.eventSourceConversationId = conversationId;
+  source.onmessage = (event) => {
+    try {
+      applyUpdatedSlot(JSON.parse(event.data));
+    } catch {
+      // Ignore malformed stream events; fallback polling remains active.
+    }
+  };
+  source.onerror = () => {
+    // Keep the polling fallback active. EventSource will retry automatically.
+  };
+}
+
 function selectSeed(seedId) {
   state.selectedSeedId = seedId;
   state.activeConversationId = conversationsForSelectedSeed()[0]?.conversationId || null;
@@ -543,7 +581,7 @@ function selectSeed(seedId) {
 function selectConversation(conversationId) {
   state.activeConversationId = conversationId;
   renderWorkspace();
-  $('#main-composer textarea')?.focus();
+  $('#main-composer [name="text"]')?.focus();
   refreshActiveConversation();
 }
 
@@ -576,7 +614,7 @@ async function sendResponse(conversationId, text, preparedReplyId = null) {
       renderCustomerList();
       renderConversationState(slot);
       renderMainChatHistory(slot);
-      $('#main-composer textarea').value = '';
+      $('#main-composer [name="text"]').value = '';
       updateComposerWordCount($('#main-composer'));
     }
     setStatus(`Sent as ${selectedSeed()?.displayName || 'the selected seed'} · ${result.responseSource}`, 'success');
@@ -627,14 +665,14 @@ document.addEventListener('input', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented) return;
   const form = event.target.closest('form');
-  if (!event.target.matches('#main-composer textarea') || !form) return;
+  if (!event.target.matches('#main-composer [name="text"]') || !form) return;
   handleComposerReturn(event, form);
 }, true);
 
 document.addEventListener('beforeinput', (event) => {
   if (event.defaultPrevented) return;
   const form = event.target.closest('form');
-  if (!event.target.matches('#main-composer textarea') || !form) return;
+  if (!event.target.matches('#main-composer [name="text"]') || !form) return;
   handleComposerReturn(event, form);
 }, true);
 
@@ -670,7 +708,7 @@ document.addEventListener('click', (event) => {
     preparedReplyId: reply.preparedReplyId
   });
   renderMainChat();
-  $('#main-composer textarea')?.focus();
+  $('#main-composer [name="text"]')?.focus();
   setStatus('Prepared text inserted. Send it directly or edit it first.');
 });
 
